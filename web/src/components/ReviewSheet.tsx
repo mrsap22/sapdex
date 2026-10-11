@@ -1,0 +1,520 @@
+import { TriangleAlert } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { checkAddress } from "../../../shared/addresses.ts";
+import { displayBps, displayExact } from "../../../shared/amounts.ts";
+import type { CreateOrderBody } from "../../../shared/api.ts";
+import { chainName, sendWindowMs } from "../../../shared/chains.ts";
+import { REWARDS } from "../../../shared/rewards.ts";
+import { api, ApiError } from "../api.ts";
+import { IMPACT_BLOCK_BPS, IMPACT_WARN_BPS } from "../config.ts";
+import { GAS_WITHDRAWN, gasChoice, gasDiffers, gasKey, gasPart, reviewAge, totalSent, TWO_PAYMENTS, type ReviewedGas } from "../lib/gas-logic.ts";
+import { aboutMinutes, appFeeWords, minutesText, modeTold, orderDiffers, PRIVATE_UNAVAILABLE, rateText, reviewAction, reviewSentence, routedPrivately, routingChoice, routingNote, type ReviewPhase, type Reviewed } from "../lib/swap-logic.ts";
+import { clockTime } from "../lib/order-logic.ts";
+import { statsPageOn } from "../lib/stats-logic.ts";
+import { navigate } from "../router.ts";
+import { useApp } from "../stores/app.ts";
+import { ghostChoice, useGhost } from "../stores/ghost.ts";
+import { useOrders } from "../stores/orders.ts";
+import { useSheet } from "../stores/sheet.ts";
+import { gasAge, heardRouting, quoteAge, useSwap } from "../stores/swap.ts";
+import { useTokens } from "../stores/tokens.ts";
+import { Address } from "./Address.tsx";
+import { Said } from "./Amount.tsx";
+import { CoinIcon } from "./CoinIcon.tsx";
+import { AddressField } from "./AddressField.tsx";
+import { PrimaryButton } from "./Button.tsx";
+import { Sheet } from "./Sheet.tsx";
+
+/** A random label for one confirmation, so that a retried request returns the same order instead of making a second. */
+function newRequestId(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(18));
+  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_");
+}
+
+/** Pads two exact amounts of one coin to the same number of decimals, so their points line up one above the other. */
+function alignedPair(a: string, b: string): [string, string] {
+  const decimals = (text: string) => (text.includes(".") ? text.length - text.indexOf(".") - 1 : 0);
+  const most = Math.max(decimals(a), decimals(b));
+  const pad = (text: string) => (most === 0 ? text : `${text.includes(".") ? text : `${text}.`}${"0".repeat(most - decimals(text))}`);
+  return [pad(a), pad(b)];
+}
+
+/** Under the rewards address in Ghost mode: the field is empty unless the person fills it, and they are told what filling it does. */
+export const GHOST_REWARDS_HINT = "Naming an address ties this swap's points to it. Leave it empty and this swap adds no points.";
+/** Said before an order is made in Ghost mode, where any other order is told that its deposit will be listed: this one is not, and its record does not outlast it. */
+export const GHOST_ORDER_LINE = "This order is not listed on the Stats page, and its record is deleted from this site's server when it is delivered or refunded.";
+
+/** A space that a line never breaks at: a number and its unit stay on one line together. */
+const NBSP = "\u00a0";
+
+function Row({ label, children, name }: { label: string; children: React.ReactNode; name?: string }) {
+  return (
+    <div className="review-row" data-row={name}>
+      <dt className="muted">{label}</dt>
+      <dd>{children}</dd>
+    </div>
+  );
+}
+
+/**
+ * The last look before an order is made: every number in full, both addresses in full,
+ * how long there is to pay, and the Terms. Confirming makes the order; it moves no funds.
+ * Where the server routes swaps privately, it also says how this one is routed, and the order is
+ * asked for by that route and no other.
+ * In Ghost mode the order is marked as made in it and is added to no list in this browser, and the
+ * rewards address is the person's to give or leave out: nothing fills it in.
+ * With "Add gas" switched on there are two parts: the swap, as ever, and the gas order beside it,
+ * with its own amounts and fees; then what is sent in all. The gas order's numbers are asked for,
+ * reviewed and confirmed with the swap's, and the order that comes back is held to both.
+ */
+export function ReviewSheet() {
+  const close = useSheet((state) => state.close);
+  const swap = useSwap();
+  const tokens = useTokens((state) => state.byId);
+  const termsVersion = useApp((state) => state.config?.termsVersion ?? "");
+  const privacyMode = useApp((state) => state.config?.privacyMode ?? null);
+  const statsOn = useApp((state) => statsPageOn(state.config));
+  const remember = useOrders((state) => state.remember);
+  const ghost = useGhost((state) => state.on);
+
+  const [phase, setPhase] = useState<ReviewPhase>("review");
+  const [accepted, setAccepted] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  // Where this swap's points go: the Solana address typed here, or nowhere.
+  const [rewardsText, setRewardsText] = useState("");
+  // True when the numbers were replaced because the route changed, not the price.
+  const [rerouted, setRerouted] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  const requestId = useRef(newRequestId());
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const from = swap.fromId === null ? null : (tokens.get(swap.fromId) ?? null);
+  const to = swap.toId === null ? null : (tokens.get(swap.toId) ?? null);
+  const quote = swap.quote;
+  // The gas order beside this swap, where "Add gas" is switched on and there is a preview of it. Null for every other review.
+  const gas = gasPart(swap.gasOn, swap.gas, from, tokens);
+  // The quote's age, and with gas its preview's too: neither is confirmed old, or while it is being asked for again.
+  const age = reviewAge(quoteAge(swap, now), gas === null ? "none" : gasAge(swap, now));
+  // Gas that was part of this review and then was not (its preview was refused when it was asked for again) is said, not only taken away.
+  const [hadGas, setHadGas] = useState(false);
+  if (gas !== null && !hadGas) setHadGas(true);
+  const gasWithdrawn = hadGas && gas === null;
+  // How this swap is routed, as the quote on screen says it. With the server routing in public, nothing is said.
+  const routing = routingNote(privacyMode, quote, swap.withoutPrivate);
+  // The same for the gas order, by its own preview's word. It is only ever private (a preview that is not is never shown).
+  const gasRouting = gas === null ? null : routingNote(privacyMode, gas.quote);
+  const privately = routedPrivately(quote);
+  // "None" unless the server is set to take a fee. Points do not turn on it: they are counted from the size of the swap.
+  const noFee = appFeeWords(quote);
+  // Addresses are shown, sent and compared in their one standard spelling (the letter-case that
+  // carries the checksum, for example). The server stores that spelling; anything else typed here
+  // would come back looking different and stop the order.
+  const standard = (chain: string | undefined, text: string) => {
+    const check = chain === undefined ? null : checkAddress(chain, text.trim());
+    return check !== null && check.ok ? check.address : text.trim();
+  };
+  // The refund address is the one entered on the card. Nothing stands in for it.
+  const refundTo = standard(from?.chain, swap.refundTo);
+  const recipient = standard(to?.chain, swap.recipient);
+  const refundValid = from !== null && checkAddress(from.chain, refundTo).ok;
+  // Points belong to a Solana address. One can be given here, or the swap adds no points: nothing
+  // stands in for an address the person has not given.
+  const rewardsTyped = rewardsText.trim();
+  const rewardsTo = rewardsTyped !== "" ? standard(REWARDS.chain, rewardsTyped) : "";
+  const rewardsValid = rewardsTo === "" || checkAddress(REWARDS.chain, rewardsTo).ok;
+  // Every new set of numbers must be on screen for a moment before it can be confirmed, and needs
+  // its own tick when the price impact is large: a yes given to one quote is not a yes to the next.
+  // The gas order's numbers are part of the set: new ones, and gas going out of the review, are new numbers too.
+  const quoteKey = quote === null ? null : `${quote.amountIn}|${quote.amountOut}|${quote.minAmountOut}|${quote.fees.appBps}|${quote.fees.providerBps}|${privately ? "private" : ""}${gasKey(gas)}`;
+  const firstKey = useRef(quoteKey);
+  const [settling, setSettling] = useState(false);
+  const [impactAccepted, setImpactAccepted] = useState(false);
+  useEffect(() => {
+    if (quoteKey === null || quoteKey === firstKey.current) return;
+    firstKey.current = quoteKey;
+    setImpactAccepted(false);
+    setSettling(true);
+    const timer = setTimeout(() => setSettling(false), 1000);
+    return () => clearTimeout(timer);
+  }, [quoteKey]);
+  const impact = quote?.priceImpactBps ?? null;
+  const impactUnconfirmed = impact !== null && impact > IMPACT_BLOCK_BPS && !impactAccepted;
+
+  const action = useMemo(() => reviewAction({ phase, quote: age, termsAccepted: accepted, settling, impactUnconfirmed }), [phase, age, accepted, settling, impactUnconfirmed]);
+
+  // Nothing to review: the inputs changed underneath the sheet.
+  if (from === null || to === null) return null;
+
+  // Numbers that can no longer be confirmed stay on screen, dimmed: an old quote, and one the server would not make an order of.
+  const stale = age === "expired" || age === "loading" || phase === "unavailable";
+
+  // However the sheet comes to close. After "private routing is not available" the card takes over:
+  // it says the same sentence and offers the choice. Nothing is asked for again from here.
+  const leave = () => {
+    if (phase === "unavailable") swap.privateRefused();
+    close();
+  };
+
+  const confirm = async () => {
+    if (quote === null || !refundValid || !rewardsValid) return;
+    setPhase("creating");
+    setProblem(null);
+    const reviewed: Reviewed = { from: from.id, to: to.id, amountIn: quote.amountIn, minAmountOut: quote.minAmountOut, slippageBps: quote.slippageBps, recipient, refundTo, rewardsAddress: rewardsTo === "" ? null : rewardsTo, ...(quote.routing !== undefined ? { routing: quote.routing } : {}) };
+    // What the gas order must turn out to be, where gas is part of this review. Its two addresses are the swap's own, and no others.
+    const reviewedGas: ReviewedGas | null = gas === null ? null : { from: from.id, to: gas.coin.id, amountIn: gas.quote.amountIn, recipient, refundTo };
+    const body: CreateOrderBody & { requestId: string } = {
+      from: from.id,
+      to: to.id,
+      amount: quote.amountIn,
+      pay: "manual",
+      // The limit the reviewed numbers were worked out with, not whatever the card holds by now.
+      slippageBps: quote.slippageBps,
+      recipient,
+      refundTo,
+      ...(rewardsTo !== "" ? { rewardsAddress: rewardsTo } : {}),
+      // The person's choice of public routing, exactly as the quote was asked for. No level is ever named.
+      ...routingChoice(privacyMode, swap.withoutPrivate),
+      // An order made in Ghost mode says so, and no other order says anything of it.
+      ...ghostChoice(ghost),
+      // Gas, where it is switched on: the amount and the numbers of the preview on screen, and nothing of where it goes. The server sends it to this swap's receiving address.
+      ...gasChoice(gas),
+      // With the numbers goes the routing of the quote that was on screen, in that quote's own word: the server makes no order by another route.
+      reviewed: { amountOut: quote.amountOut, minAmountOut: quote.minAmountOut, totalFeeBps: quote.fees.appBps + quote.fees.providerBps, ...(quote.routing !== undefined ? { routing: quote.routing } : {}) },
+      termsVersion,
+      termsAccepted: true,
+      requestId: requestId.current,
+    };
+    try {
+      const order = await api.createOrder(body);
+      // The order must be the one that was reviewed, and so must the gas order made with it. If anything differs, nothing is paid.
+      const differs = orderDiffers(order, reviewed) ?? gasDiffers(order.gas, reviewedGas);
+      if (differs !== null) {
+        // Nothing more is confirmed from this sheet: the only way on is to close it and start again.
+        setPhase("mismatch");
+        setProblem(`The order that came back does not match what you reviewed (${differs}). Nothing was sent, and nothing should be sent to it.`);
+        return;
+      }
+      // Kept in this browser before anything is paid, so a closed tab can find the order again.
+      // Not in Ghost mode: an order made there is reached by its own link, and by nothing kept here.
+      if (!ghost) remember(order);
+      close();
+      // A choice of public routing was for this swap, and so was gas. The next one starts as the server routes, with gas switched off.
+      swap.orderMade();
+      navigate(`/order/${order.id}`);
+    } catch (err) {
+      // The review is gone (the person left the swap page before the answer came): the card it was of is gone too, and takes no numbers.
+      if (useSheet.getState().current !== "review") return;
+      if (err instanceof ApiError && err.code === "price_moved" && err.quote !== null) {
+        // No order was made. The new numbers take the place of the old ones and need a fresh yes.
+        // So does a new route: the server makes no order by another route than the one reviewed, and says which it would be.
+        setRerouted(routedPrivately(err.quote) !== privately);
+        heardRouting(modeTold(body, err.quote));
+        useSwap.setState({ quote: err.quote, fetchedAt: Date.now(), loading: false, dirty: false, problem: null });
+        setPhase("moved");
+        return;
+      }
+      if (err instanceof ApiError && err.code === "private_unavailable") {
+        // No order was made, and none is made in public instead: that is the person's choice, and it is made on the card.
+        setPhase("unavailable");
+        setProblem(`${PRIVATE_UNAVAILABLE} No order was made.`);
+        return;
+      }
+      setPhase("review");
+      setProblem(err instanceof ApiError ? err.message : "Something went wrong. Nothing was sent. Try again.");
+      // The label of a request the server would not accept under it is not used again.
+      if (err instanceof ApiError && err.code === "conflict") requestId.current = newRequestId();
+    }
+  };
+
+  const act = () => {
+    if (action.kind === "refresh") swap.refreshNow();
+    else if (action.kind === "confirm") void confirm();
+    else if (action.kind === "close") leave();
+  };
+
+  // The time to send in, as the order's page will count it: two minutes less than the order's own deadline.
+  const payWindow = minutesText(sendWindowMs(from.chain));
+  const [receiveText, minimumText] = quote === null ? ["", ""] : alignedPair(displayExact(BigInt(quote.amountOut), to.decimals), displayExact(BigInt(quote.minAmountOut), to.decimals));
+
+  return (
+    <Sheet
+      title="Review swap"
+      onClose={leave}
+      locked={phase === "creating"}
+      footer={
+        <>
+          <p className="review-problem" role="alert" data-kind={problem !== null ? "error" : "plain"}>
+            {problem ?? (!refundValid && quote !== null ? "Enter a valid refund address above." : !rewardsValid && quote !== null ? "Enter a valid rewards address above, or clear that field." : age === "expired" ? "This quote has expired. Refresh it to see the numbers as they are now." : " ")}
+          </p>
+          <PrimaryButton onClick={act} disabled={action.disabled || (action.kind === "confirm" && (!refundValid || !rewardsValid))} busy={action.busy}>
+            {action.label}
+          </PrimaryButton>
+        </>
+      }
+    >
+      <div className="review">
+        {quote !== null ? (
+          <p className="review-sentence" data-stale={stale || undefined}>
+            <Said text={reviewSentence(from, to, BigInt(quote.amountIn), BigInt(quote.amountOut), { privately })} spoken={reviewSentence(from, to, BigInt(quote.amountIn), BigInt(quote.amountOut), { spoken: true, privately })} />
+          </p>
+        ) : (
+          <p className="review-sentence muted">The quote is being refreshed.</p>
+        )}
+
+        {phase === "moved" ? (
+          <p className="notice notice-warning" role="alert">
+            <TriangleAlert size={16} strokeWidth={1.5} aria-hidden="true" />
+            <span>{rerouted ? "This swap would be routed another way than the one you reviewed. No order was made. Check the new details and confirm again." : "The price moved. No order was made. Check the new numbers and confirm again."}</span>
+          </p>
+        ) : null}
+
+        {quote !== null ? (
+          <dl className="review-rows" data-stale={stale || undefined}>
+            <Row label="You send">
+              <span className="review-coin">
+                <CoinIcon symbol={from.symbol} chain={from.chain} contract={from.contract} size={24} />
+                <span className="mono">
+                  {displayExact(BigInt(quote.amountIn), from.decimals)}{NBSP}{from.symbol}
+                </span>
+              </span>
+              <span className="review-sub muted">on {chainName(from.chain)}</span>
+            </Row>
+            <Row label="You receive, about">
+              <span className="review-coin">
+                <CoinIcon symbol={to.symbol} chain={to.chain} contract={to.contract} size={24} />
+                <span className="mono">
+                  {receiveText}{NBSP}{to.symbol}
+                </span>
+              </span>
+              <span className="review-sub muted">on {chainName(to.chain)}</span>
+            </Row>
+            {routing !== null ? (
+              <Row label="Routing" name="routing">
+                {routing.private ? (
+                  <span className="chip routing-tag" data-tone="private">
+                    {routing.text}
+                  </span>
+                ) : (
+                  routing.text
+                )}
+              </Row>
+            ) : null}
+            <Row label="Minimum received">
+              <span className="mono">
+                {minimumText} {to.symbol}
+              </span>
+              <span className="review-sub muted">
+                <span className="mono">{displayBps(quote.slippageBps)}</span> slippage
+              </span>
+            </Row>
+            <Row label="Rate">
+              <span className="mono">
+                <Said text={rateText(from, to, BigInt(quote.amountIn), BigInt(quote.amountOut)) ?? ""} spoken={rateText(from, to, BigInt(quote.amountIn), BigInt(quote.amountOut), { spoken: true }) ?? ""} />
+              </span>
+            </Row>
+            <Row label="SaplingDex fee">
+              {noFee !== null ? (
+                <span className="muted">{noFee}</span>
+              ) : (
+                <>
+                  <span className="mono">
+                    {displayExact(BigInt(quote.fees.appAmount), from.decimals)} {from.symbol}
+                  </span>
+                  <span className="review-sub muted mono">{displayBps(quote.fees.appBps)}</span>
+                </>
+              )}
+            </Row>
+            <Row label="Provider fee">
+              <span className="mono">
+                {displayExact(BigInt(quote.fees.providerAmount), from.decimals)} {from.symbol}
+              </span>
+              <span className="review-sub muted mono">{displayBps(quote.fees.providerBps)}</span>
+            </Row>
+            <Row label={`${chainName(to.chain)} network fee`}>
+              {quote.withdrawFee !== null && BigInt(quote.withdrawFee) > 0n ? (
+                <>
+                  <span className="mono">
+                    {displayExact(BigInt(quote.withdrawFee), to.decimals)} {to.symbol}
+                  </span>
+                  <span className="review-sub muted">included above</span>
+                </>
+              ) : (
+                <span className="muted">Included above</span>
+              )}
+            </Row>
+            <Row label="Estimated time">{aboutMinutes(quote.timeEstimate)}</Row>
+            {impact !== null ? (
+              <Row label="Price impact">
+                <span className={`mono${impact > IMPACT_WARN_BPS ? " review-impact" : ""}`} data-level={impact > IMPACT_BLOCK_BPS ? "danger" : impact > IMPACT_WARN_BPS ? "warning" : undefined}>
+                  {displayBps(impact)}
+                </span>
+              </Row>
+            ) : null}
+            <Row label="Time to pay">
+              {payWindow}
+              <span className="review-sub muted">until about {clockTime(now + sendWindowMs(from.chain))} if you confirm now</span>
+            </Row>
+          </dl>
+        ) : null}
+
+        {impact !== null && impact > IMPACT_WARN_BPS && impact <= IMPACT_BLOCK_BPS ? (
+          <p className="notice notice-warning" role="note">
+            <TriangleAlert size={16} strokeWidth={1.5} aria-hidden="true" />
+            <span>Price impact is {displayBps(impact)}. You receive noticeably less than the market value of what you pay.</span>
+          </p>
+        ) : null}
+        {impact !== null && impact > IMPACT_BLOCK_BPS ? (
+          <div className="notice notice-danger" role="note">
+            <TriangleAlert size={16} strokeWidth={1.5} aria-hidden="true" />
+            <div>
+              <p>Price impact is {displayBps(impact)}. You would lose a large part of the value of what you pay.</p>
+              <label className="check">
+                <input type="checkbox" checked={impactAccepted} onChange={(event) => setImpactAccepted(event.target.checked)} disabled={phase === "creating" || phase === "mismatch" || phase === "unavailable"} />
+                <span>I understand and want to continue</span>
+              </label>
+            </div>
+          </div>
+        ) : null}
+
+        {/* The second part, with "Add gas" switched on: the gas order, as plainly as the swap above it. Then what is sent in all. */}
+        {quote !== null && gas !== null ? (
+          <>
+            <section className="review-gas">
+              <h3 className="review-part">
+                Gas<span className="muted"> · {chainName(gas.coin.chain)}</span>
+              </h3>
+              <dl className="review-rows" data-stale={stale || undefined}>
+                <Row label="You send">
+                  <span className="review-coin">
+                    <CoinIcon symbol={from.symbol} chain={from.chain} contract={from.contract} size={24} />
+                    <span className="mono">
+                      {displayExact(BigInt(gas.quote.amountIn), from.decimals)}{NBSP}{from.symbol}
+                    </span>
+                  </span>
+                  <span className="review-sub muted">on {chainName(from.chain)}</span>
+                </Row>
+                <Row label="You receive, about">
+                  <span className="review-coin">
+                    <CoinIcon symbol={gas.coin.symbol} chain={gas.coin.chain} contract={gas.coin.contract} size={24} />
+                    <span className="mono">
+                      {displayExact(BigInt(gas.quote.amountOut), gas.coin.decimals)}{NBSP}{gas.coin.symbol}
+                    </span>
+                  </span>
+                  <span className="review-sub muted">on {chainName(gas.coin.chain)}</span>
+                </Row>
+                {gasRouting !== null ? (
+                  <Row label="Routing" name="routing">
+                    {gasRouting.private ? (
+                      <span className="chip routing-tag" data-tone="private">
+                        {gasRouting.text}
+                      </span>
+                    ) : (
+                      gasRouting.text
+                    )}
+                  </Row>
+                ) : null}
+                <Row label="SaplingDex fee">
+                  {appFeeWords(gas.quote) !== null ? (
+                    <span className="muted">{appFeeWords(gas.quote)}</span>
+                  ) : (
+                    <>
+                      <span className="mono">
+                        {displayExact(BigInt(gas.quote.fees.appAmount), from.decimals)} {from.symbol}
+                      </span>
+                      <span className="review-sub muted mono">{displayBps(gas.quote.fees.appBps)}</span>
+                    </>
+                  )}
+                </Row>
+                <Row label="Provider fee">
+                  <span className="mono">
+                    {displayExact(BigInt(gas.quote.fees.providerAmount), from.decimals)} {from.symbol}
+                  </span>
+                  <span className="review-sub muted mono">{displayBps(gas.quote.fees.providerBps)}</span>
+                </Row>
+                <Row label={`${chainName(gas.coin.chain)} network fee`}>
+                  {gas.quote.withdrawFee !== null && BigInt(gas.quote.withdrawFee) > 0n ? (
+                    <>
+                      <span className="mono">
+                        {displayExact(BigInt(gas.quote.withdrawFee), gas.coin.decimals)} {gas.coin.symbol}
+                      </span>
+                      <span className="review-sub muted">included above</span>
+                    </>
+                  ) : (
+                    <span className="muted">Included above</span>
+                  )}
+                </Row>
+                <Row label="Arrives at">The same receiving address</Row>
+              </dl>
+            </section>
+            <dl className="review-rows" data-stale={stale || undefined}>
+              <Row label="Total sent">
+                <span className="mono">
+                  {displayExact(totalSent(quote.amountIn, gas.quote.amountIn), from.decimals)}{NBSP}{from.symbol}
+                </span>
+                <span className="review-sub muted">on {chainName(from.chain)}</span>
+              </Row>
+            </dl>
+          </>
+        ) : null}
+        {gasWithdrawn ? (
+          <p className="notice notice-warning" role="alert">
+            <TriangleAlert size={16} strokeWidth={1.5} aria-hidden="true" />
+            <span>{GAS_WITHDRAWN}</span>
+          </p>
+        ) : null}
+
+        <div className="review-address">
+          <p className="review-address-label">
+            Receiving address<span className="muted"> · {chainName(to.chain)}</span>
+          </p>
+          <p className="review-address-value">
+            <Address value={recipient} />
+          </p>
+        </div>
+
+        <div className="review-address">
+          <p className="review-address-label">
+            Refund address<span className="muted"> · {chainName(from.chain)}</span>
+          </p>
+          <p className="review-address-value">
+            <Address value={refundTo} />
+          </p>
+          <p className="review-address-note muted">If the swap fails, your {from.symbol} comes back here.</p>
+        </div>
+
+        <div className="review-address">
+          <p className="review-address-label">
+            Points<span className="muted"> · {chainName(REWARDS.chain)}</span>
+          </p>
+          <AddressField label="Rewards address" hint={ghost ? GHOST_REWARDS_HINT : "Optional. Without one, this swap adds no points."} chain={REWARDS.chain} value={rewardsText} onChange={setRewardsText} />
+        </div>
+
+        <p className="review-plain muted">
+          Confirming makes the order, with a final quote taken at that moment. If that quote is more than 1% worse than the numbers above, no order is made and you are shown the new numbers first. Nothing leaves your wallet until you pay, and an order cannot be changed once it is made.
+        </p>
+        {/* With gas, said before anything is confirmed: the swap and the gas are paid one by one. */}
+        {gas !== null ? <p className="review-plain muted">{TWO_PAYMENTS}</p> : null}
+        {/* Said before the order is made, wherever the site has its Stats page: what of this swap will be listed there. */}
+        {/* An order made in Ghost mode is not listed there. What is true of it is said in that line's place, whether or not the site has a Stats page. */}
+        {ghost ? <p className="review-plain muted">{GHOST_ORDER_LINE}</p> : statsOn ? <p className="review-plain muted">This swap's deposit transaction will be listed on the Stats page. Which swap was delivered where is not shown.</p> : null}
+
+        <label className="check">
+          <input type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)} disabled={phase === "creating" || phase === "mismatch" || phase === "unavailable"} />
+          <span>
+            I have read and accept the{" "}
+            {/* The Terms open in a tab of their own, so that the review stays as it is. In Ghost mode that tab is opened as this
+                tab's own: the browser then hands it this tab's flag, and it opens in the mode too. Any other new tab starts outside it. */}
+            <a href="/terms" target="_blank" rel={ghost ? "opener" : "noopener"}>
+              Terms of Use
+            </a>
+            .
+          </span>
+        </label>
+      </div>
+    </Sheet>
+  );
+}

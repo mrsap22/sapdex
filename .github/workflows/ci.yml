@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # Each action is named by the exact commit it was read at (the tag it carried then is beside it).
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Use the npm this project is pinned to (the "packageManager" line of package.json)
+        run: npm install --global npm@11.6.2
+      - name: Install exactly what the lockfile says, running no package scripts
+        run: npm ci --ignore-scripts
+      - name: Lint and type-check
+        run: npm run lint
+      - name: Tests
+        run: npm test
+      - name: Build, then check the output for secrets and size budgets
+        run: npm run build
+      - name: Measure the built pages in a real browser (Lighthouse budgets and the axe rules for WCAG 2.2 AA)
+        run: npm run check:pages

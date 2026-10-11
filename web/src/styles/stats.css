@@ -1,0 +1,445 @@
+/* The Stats page. Figures, a grid of chains and three lists: type, room and hairlines, with the
+   accent kept for the lines under the ranked lists and for a row's link. Nothing is a box. */
+.stats {
+  /* A coin's chain badge is ringed in the colour of what it sits on: here, the page itself. */
+  --coin-ring: var(--bg);
+  /* How tall one row of "Recent swaps" is: two lines of words on a phone, one line from 768 px. */
+  --swap-row: calc(var(--space-12) * 2 + var(--line-14) + var(--line-12) + var(--border-width));
+  display: grid;
+  gap: var(--space-48);
+  width: 100%;
+  max-width: var(--wide-width);
+  padding-top: var(--space-32);
+}
+
+/* ---- Five figures: two across on a phone, three from 768 px, all five side by side from 1024 px.
+   A thin rule between neighbours, nothing round them. ---- */
+.stats-tiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  row-gap: var(--space-24);
+  margin: 0;
+}
+
+/* A label may take two lines on a phone: the figures of a row still stand on one line, at the foot of their tiles. */
+.stats-tile {
+  display: grid;
+  align-content: space-between;
+  gap: var(--space-8);
+  min-width: 0;
+  padding: 0 var(--space-16);
+  border-left: var(--border-width) solid var(--border);
+}
+
+.stats-tile:nth-child(odd) {
+  padding-left: 0;
+  border-left: 0;
+}
+
+/* Fixed-width figures, on one line of one height, whether it holds a figure on its way, one counting up or the last: nothing beside or under it moves. */
+.stats-number {
+  height: var(--line-20);
+  font-size: var(--text-20);
+  line-height: var(--line-20);
+  font-weight: var(--weight-500);
+  letter-spacing: var(--tracking-tight);
+  white-space: nowrap;
+}
+
+.stats-waiting {
+  width: 60%;
+  height: var(--line-20);
+}
+
+/* ---- Under the figures ---- */
+.stats-part {
+  display: grid;
+  align-content: start;
+  gap: var(--space-16);
+  min-width: 0;
+}
+
+.stats-heading {
+  font-size: var(--text-20);
+  line-height: var(--line-20);
+  font-weight: var(--weight-500);
+  letter-spacing: var(--tracking-tight);
+}
+
+.stats-note {
+  max-width: var(--prose-width);
+  text-wrap: pretty;
+}
+
+/* A heading with a button at the end of its line. The line is as tall as the button whether the button is there or not. */
+.stats-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-16);
+  min-height: var(--height-36);
+}
+
+/* ---- Room kept from the first paint ----
+   A list has the room of its rows before they arrive, with fewer of them, and with none: so nothing
+   under it moves when the answer comes. The page says how many rows (--rows); a row's height is
+   --row, and a list's own hairline is counted in. Rows are of one fixed height, on one line of words. */
+.stats-room {
+  --rows: 5;
+  --row: var(--height-52);
+  min-height: calc(var(--rows) * var(--row) + var(--border-width));
+}
+
+.stats-room-swaps {
+  --row: var(--swap-row);
+}
+
+/* A row on its way: one quiet bar where its words will be. */
+.stats-waiting-row {
+  grid-column: 1 / -1;
+  flex: none;
+  width: 50%;
+  height: var(--line-14);
+}
+
+/* A list with nothing in it yet says so in its first row's place. */
+.stats-none {
+  padding: var(--space-12) 0;
+  border-top: var(--border-width) solid var(--border);
+}
+
+.stats-figure {
+  color: var(--text);
+}
+
+/* ---- Chains used: every chain as its own mark over its name, with nothing round it, as on the
+   strip of chains. A chain that has been used is in full colour; the others are faded. ---- */
+
+/* The chosen chain's figures. The line keeps room for two lines of words on a phone, where it may
+   take two, so that nothing under it moves when what it says changes. On a phone the grid is taller
+   than the screen: the line stays under the header while the grid is scrolled past, on the page's
+   own colour, so that what a tap brings up is always in view. */
+.stats-chains-line {
+  position: sticky;
+  top: var(--header-height);
+  z-index: 1;
+  min-height: calc(var(--line-14) * 2 + var(--space-16));
+  margin: calc(var(--space-8) * -1) 0;
+  padding: var(--space-8) 0;
+  background: var(--bg);
+}
+
+.stats-chains {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--space-64), 1fr));
+  gap: var(--space-16) var(--space-8);
+}
+
+/* One chain. A used one is a button, and so at least as tall as a finger needs. */
+.stats-chains-item {
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  gap: var(--space-8);
+  width: 100%;
+  /* The mark and two lines of a name, whether the name takes one line or two: every row of the grid is one height, so the room kept for it is its own. */
+  min-height: calc(var(--coin-32) + var(--space-8) + var(--line-12) * 2);
+  color: var(--text-faint);
+  font-size: var(--text-12);
+  line-height: var(--line-12);
+  text-align: center;
+  text-wrap: balance;
+}
+
+.stats-chains-item[data-used] {
+  color: var(--text);
+}
+
+/* The chain whose figures the line above holds. */
+.stats-chains-item[aria-pressed="true"] {
+  text-decoration: underline;
+  text-underline-offset: var(--space-4);
+}
+
+.stats-chains-mark {
+  width: var(--coin-32);
+  height: var(--coin-32);
+  opacity: var(--opacity-disabled);
+}
+
+/* A used chain's mark waits faded until the grid has come into view, then comes up to full colour,
+   each a step after the one before it. Only its opacity changes. */
+.stats-chains[data-in] [data-used] .stats-chains-mark {
+  opacity: 1;
+  animation: stats-chain-light var(--motion-reveal) var(--ease-out) calc(var(--i) * var(--stagger)) backwards;
+}
+
+@keyframes stats-chain-light {
+  from {
+    opacity: var(--opacity-disabled);
+  }
+}
+
+/* ---- Top coins sent and top chains: two ranked lists, side by side where there is room ---- */
+.stats-tops {
+  display: grid;
+  gap: var(--space-48);
+  min-width: 0;
+}
+
+.stats-ranks,
+.stats-swaps {
+  display: grid;
+  align-content: start;
+  border-top: var(--border-width) solid var(--border);
+}
+
+.stats-rank {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  height: var(--height-52);
+  padding: var(--space-12) 0;
+  border-bottom: var(--border-width) solid var(--border);
+}
+
+.stats-rank-number {
+  flex: none;
+  color: var(--text-faint);
+  font-size: var(--text-12);
+  line-height: var(--line-12);
+}
+
+/* The name takes the room there is, on one line: one too long for it is cut short, so that a row is never taller than its room. The figure after it is never cut. */
+.stats-rank-name {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  min-width: 0;
+}
+
+.stats-rank-name > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The line under a row, over the hairline: as long as the row's share of the largest. */
+.stats-rank-bar {
+  --bar: 0;
+  position: absolute;
+  right: 0;
+  bottom: calc(var(--border-width) * -1);
+  left: 0;
+  height: var(--rule-height);
+  background: var(--accent);
+  transform: scaleX(var(--bar));
+  transform-origin: left;
+}
+
+.stats-coins {
+  flex: none;
+  display: flex;
+  gap: var(--space-8);
+  padding-right: var(--coin-badge-out-small);
+}
+
+.stats-chain {
+  flex: none;
+  width: var(--icon-20);
+  height: var(--icon-20);
+  border-radius: var(--coin-badge-radius);
+}
+
+/* ---- Recent swaps: rows with a hairline between. On a phone the time and the deposit's link stand under what was sent. ---- */
+.stats-swap {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0 var(--space-12);
+  height: var(--swap-row);
+  padding: var(--space-12) 0;
+  border-bottom: var(--border-width) solid var(--border);
+}
+
+.stats-swap .stats-coins {
+  grid-row: span 2;
+}
+
+/* What was sent: the amount in the weight of a figure, its chain after it in the quiet colour. On one line, cut short if it is too long for it. */
+.stats-swap-sent {
+  grid-column: 2 / -1;
+  overflow: hidden;
+  font-weight: var(--weight-500);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stats-swap-sent > .muted {
+  font-weight: var(--weight-400);
+}
+
+.stats-swap-when,
+.stats-swap-tx {
+  grid-row: 2;
+  font-size: var(--text-12);
+  line-height: var(--line-12);
+}
+
+.stats-swap-when {
+  grid-column: 2;
+}
+
+/* The deposit's hash, shortened. As a link it is as tall as a finger needs, and takes no more room in its row than its words do. */
+.stats-swap-tx {
+  grid-column: 3;
+  justify-self: end;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+  white-space: nowrap;
+}
+
+a.stats-swap-tx {
+  min-height: var(--height-44);
+  margin: calc((var(--height-44) - var(--line-12)) / -2) 0;
+}
+
+.stats-failed {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-16);
+}
+
+@media (min-width: 768px) {
+  .stats {
+    --swap-row: var(--height-52);
+    gap: var(--space-64);
+    padding-top: var(--space-64);
+  }
+
+  .stats-tiles {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    row-gap: var(--space-32);
+  }
+
+  .stats-tile,
+  .stats-tile:nth-child(odd) {
+    padding: 0 var(--space-24);
+    border-left: var(--border-width) solid var(--border);
+  }
+
+  .stats-tile:nth-child(3n + 1) {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .stats-number {
+    height: var(--line-28);
+    font-size: var(--text-28);
+    line-height: var(--line-28);
+    letter-spacing: var(--tracking-display);
+  }
+
+  .stats-waiting {
+    height: var(--line-28);
+  }
+
+  .stats-chains-line {
+    min-height: calc(var(--line-14) + var(--space-16));
+  }
+
+  /* Wide enough for every chain's name on one line. */
+  .stats-chains {
+    grid-template-columns: repeat(auto-fill, minmax(var(--space-96), 1fr));
+    gap: var(--space-24) var(--space-16);
+  }
+
+  /* The lists side by side, however many there are: two, or three once the coins received are shown. */
+  .stats-tops {
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: var(--space-64);
+  }
+
+  /* One line to a swap: what was sent, then its time and its deposit's link, each in a column of its own. */
+  .stats-swap {
+    grid-template-columns: auto minmax(0, 1fr) var(--chip-width-wide) var(--chip-width);
+    gap: var(--space-16);
+  }
+
+  .stats-swap .stats-coins {
+    grid-row: auto;
+  }
+
+  .stats-swap-sent {
+    grid-column: 2;
+  }
+
+  .stats-swap-when,
+  .stats-swap-tx {
+    grid-row: 1;
+    font-size: var(--text-14);
+    line-height: var(--line-14);
+  }
+
+  .stats-swap-when {
+    grid-column: 3;
+  }
+
+  .stats-swap-tx {
+    grid-column: 4;
+  }
+
+  a.stats-swap-tx {
+    margin: calc((var(--height-44) - var(--line-14)) / -2) 0;
+  }
+}
+
+@media (min-width: 1024px) {
+  .stats-tiles {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .stats-tile:nth-child(3n + 1) {
+    padding-left: var(--space-24);
+    border-left: var(--border-width) solid var(--border);
+  }
+
+  .stats-tile:first-child {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .stats-number {
+    height: var(--line-24);
+    font-size: var(--text-24);
+    line-height: var(--line-24);
+  }
+
+  .stats-waiting {
+    height: var(--line-24);
+  }
+}
+
+@media (min-width: 1280px) {
+  .stats-number {
+    height: var(--line-28);
+    font-size: var(--text-28);
+    line-height: var(--line-28);
+  }
+
+  .stats-waiting {
+    height: var(--line-28);
+  }
+}
+
+/* Less movement: the used chains are in full colour at once. */
+@media (prefers-reduced-motion: reduce) {
+  .stats-chains[data-in] [data-used] .stats-chains-mark {
+    animation: none;
+  }
+}

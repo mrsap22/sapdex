@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <script>
+      (function () {
+        // A tab left in Ghost mode. Before anything else on this page is fetched, the page is held to this
+        // site's own origin by a content policy of its own (the same words as GHOST_POLICY in src/stores/ghost.ts),
+        // and takes the mode's calmer cast. The one thing read here is the mode's own flag, kept for this tab only.
+        try {
+          if (sessionStorage.getItem("ghost") === "on") {
+            var policy = document.createElement("meta");
+            policy.httpEquiv = "Content-Security-Policy";
+            policy.content = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; font-src 'self'; connect-src 'self'; media-src 'self'; manifest-src 'self'; worker-src 'none'; child-src 'none'; frame-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'";
+            document.head.appendChild(policy);
+            document.documentElement.dataset.ghost = "on";
+          }
+        } catch (error) {
+          // A browser that will not let the flag be read has not kept it either: the mode is off.
+        }
+        // Every visit starts in the light theme, for everyone. The dark one can be chosen, and lasts until the page is loaded again.
+        document.documentElement.dataset.theme = "light";
+        // The words below are the home page's; any other page starts empty.
+        if (location.pathname === "/") document.documentElement.dataset.first = "home";
+      })();
+    </script>
+    <meta name="description" content="Swap any coin on any chain to ZEC on Solana, and back." />
+    <meta name="color-scheme" content="light dark" />
+    <title>SaplingDex</title>
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="SaplingDex" />
+    <meta property="og:title" content="SaplingDex" />
+    <meta property="og:description" content="Swap any coin on any chain to ZEC on Solana, and back." />
+    <meta property="og:image" content="/share.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="SaplingDex. Swap any coin on any chain to ZEC on Solana, and back." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="preload" as="font" type="font/woff2" href="/src/assets/fonts/figtree-latin.woff2" crossorigin />
+    <link rel="preload" as="font" type="font/woff2" href="/src/assets/fonts/instrument-serif-italic-latin.woff2" crossorigin />
+    <link rel="preload" as="font" type="font/woff2" href="/src/assets/fonts/dm-mono-latin-400.woff2" crossorigin />
+    <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+  </head>
+  <body>
+    <div id="root">
+      <!-- What is on screen before the scripts arrive: the banner if the server has one to show, the
+           header's place, and on the home page its first words. The app draws over all of it. -->
+      <div class="app first-paint">
+        <!--banner-->
+        <div class="header"></div>
+        <main class="main">
+          <div class="hero">
+            <div class="headline">
+              <p class="headline-title"><span class="headline-line"><span class="headline-word" style="--i: 0">Any</span> <span class="headline-word" style="--i: 1">coin,</span> <span class="headline-word" style="--i: 2">in</span> <span class="headline-word" style="--i: 3">and</span> <span class="headline-word" style="--i: 4">out</span> <span class="headline-word" style="--i: 5">of</span> <span class="headline-word" style="--i: 6">ZEC.</span></span> <span class="headline-line"><span class="headline-word headline-accent" style="--i: 7">Powered</span> <span class="headline-word headline-accent" style="--i: 8">by</span> <span class="headline-word headline-accent" style="--i: 9">NEAR</span> <span class="headline-word headline-accent" style="--i: 10">Intents.</span></span></p>
+              <p class="headline-sub muted">Bring any coin from any chain and arrive on Solana with ZEC, or take ZEC out to any coin. Every fee is shown before you confirm.</p>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

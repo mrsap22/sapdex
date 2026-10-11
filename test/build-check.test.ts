@@ -1,0 +1,249 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { BUDGETS, checkBuild, staticImports } from "../scripts/check-build.ts";
+import { firstWords } from "../server/static.ts";
+
+/** The start of every sample page: the first words of the site in the form the server may rewrite them, as the real page holds them. */
+const FIRST = `<!doctype html>${firstWords("public").map((place) => place.html).join("")}`;
+
+/** What the sign-in's wallet code is known by in a build: the event of the wallets' shared standard that it sends. */
+const SIGN_IN_CODE = 'window.dispatchEvent(new CustomEvent("wallet-standard:app-ready",{detail:api}))';
+const ONE_SIGN_IN = (files: number) => `the sign-in's wallet code is in ${files} files of the build (it must be in exactly one, fetched only when "Sign in" is pressed)`;
+const IN_FIRST_LOAD = (file: string) => `${file}: the sign-in's wallet code is part of the first page load (it must load only when "Sign in" is pressed on the Rewards page)`;
+
+let dist = "";
+beforeEach(() => {
+  dist = fs.mkdtempSync(path.join(os.tmpdir(), "saplingdex-dist-"));
+  fs.mkdirSync(path.join(dist, "assets"));
+  fs.writeFileSync(path.join(dist, "index.html"), FIRST + '<script type="module" src="/assets/app-1.js"></script><link rel="stylesheet" href="/assets/app-1.css">');
+  fs.writeFileSync(path.join(dist, "assets", "app-1.js"), 'console.log("hello")');
+  fs.writeFileSync(path.join(dist, "assets", "app-1.css"), "body{margin:0}");
+  // The one file that speaks to a wallet: the Rewards page's sign-in, fetched only when it is pressed. Every build has it, once.
+  fs.writeFileSync(path.join(dist, "assets", "sign-in-1.js"), SIGN_IN_CODE);
+});
+afterEach(() => fs.rmSync(dist, { recursive: true, force: true }));
+
+const add = (name: string, content: string | Buffer) => fs.writeFileSync(path.join(dist, "assets", name), content);
+/**
+ * Bytes that do not compress, so that a file of them is as large on the wire as on disk. They are
+ * worked out from a fixed start and are the same on every run: bytes drawn afresh each time could,
+ * once in a great while, spell something the check looks for.
+ */
+const noise = (bytes: number) => {
+  let last = 1;
+  return Buffer.from(Array.from({ length: bytes }, () => 33 + ((last = (last * 48271) % 2147483647) % 90)));
+};
+const problems = (env: Record<string, string> = {}) => checkBuild(dist, env).problems;
+
+describe("build check", () => {
+  it("fails when the built page no longer holds one of the first words the server rewrites for a privately routed site, or holds it twice", () => {
+    const page = fs.readFileSync(path.join(dist, "index.html"), "utf8");
+    fs.writeFileSync(path.join(dist, "index.html"), page.replace("<title>SaplingDex</title>", "<title>SaplingDex </title>"));
+    expect(problems()).toEqual(["index.html holds the title 0 times in the form the server rewrites (it must be there exactly once)"]);
+    fs.writeFileSync(path.join(dist, "index.html"), `${page}<title>SaplingDex</title>`);
+    expect(problems()).toEqual(["index.html holds the title 2 times in the form the server rewrites (it must be there exactly once)"]);
+  });
+
+  it("passes a clean build and reports its sizes", () => {
+    const report = checkBuild(dist, {});
+    expect(report.problems).toEqual([]);
+    expect(report.sizes.script).toBeGreaterThan(0);
+    expect(report.sizes.css).toBeGreaterThan(0);
+    expect(report.sizes.fonts).toBe(0);
+  });
+
+  it("fails when there is no build", () => {
+    expect(checkBuild(path.join(dist, "missing"), {}).problems).toEqual(["index.html is missing"]);
+  });
+
+  it("fails when the value of a server-only variable is in the output", () => {
+    add("leak.js", 'fetch("https://rpc.example/v2/abcdef123456")');
+    for (const name of ["ONECLICK_API_KEY", "ALERT_WEBHOOK_URL", "BSC_RPC_URL", "ETH_RPC_URL", "BASE_RPC_URL", "ARBITRUM_RPC_URL", "SOLANA_RPC_URL", "FEE_RECIPIENT"]) {
+      expect(problems({ [name]: "https://rpc.example/v2/abcdef123456" }), name).toEqual(["assets/leak.js: contains the value of a server-only variable"]);
+    }
+    // A value that is public by design, such as the site's own address, is not a leak.
+    expect(problems({ SITE_URL: "https://rpc.example/v2/abcdef123456" })).toEqual([]);
+  });
+
+  const NO_LIBRARY = "a wallet-connect library (the site has none: an order is paid by sending to its deposit address)";
+  const TRANSACTION = "a request for a wallet to sign or send a transaction (the site asks a wallet for one thing only: to sign the sign-in's plain message)";
+  const leaks: Array<[string, string, string]> = [
+    ["a signed token", `const t="eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJwYXJ0bmVyIn0.c2lnbmF0dXJlLXZhbHVl"`, "a signed token"],
+    ["a private key", "-----BEGIN EC PRIVATE KEY-----\nabc\n-----END EC PRIVATE KEY-----", "a private key"],
+    ["the name of a server-only variable", "process.env.ONECLICK_API_KEY", "the name of a server-only variable"],
+    // Built from pieces so this file itself never contains a machine path.
+    ["a path from a Mac", `at "${["", "Users", "someone", "project", "x.ts"].join("/")}"`, "a path from the build machine"],
+    ["a path from Linux", `at "${["", "home", "runner", "work", "x.ts"].join("/")}"`, "a path from the build machine"],
+    ["the provider key header", 'headers:{"X-API-Key":k}', "the provider key header"],
+    ["the provider's address", 'fetch("https://1click.chaindefuser.com/v0/quote")', "the provider's address (the browser must never call it)"],
+    ["a wallet kit", 'const url="https://keys.coinbase.com/connect"', NO_LIBRARY],
+    ["a wallet-connect relay", 'new WebSocket("wss://relay.walletconnect.org")', NO_LIBRARY],
+    ["a wallet window's own parts", 'customElements.define("w3m-modal",M)', NO_LIBRARY],
+    ["a wallet library by name", 'import{createConfig}from"wagmi"', NO_LIBRARY],
+    ["Sapling's service", 'fetch("https://api.sapling.cash/v1/params")', "Sapling's service (only the server asks it; the page asks this site alone)"],
+    ["a Solana node", 'fetch("https://api.mainnet-beta.solana.com")', "a chain's node (only the server reads a chain; the page asks this site alone)"],
+    ["a node of another chain", 'const node="https://mainnet.base.org"', "a chain's node (only the server reads a chain; the page asks this site alone)"],
+    ["a request to sign a transaction", 'wallet.features["solana:signTransaction"].signTransaction(t)', TRANSACTION],
+    ["a request to sign and send a transaction", "await provider.signAndSendTransaction(tx)", TRANSACTION],
+    ["a request to send a transaction", 'request({method:"eth_sendTransaction"})', TRANSACTION],
+  ];
+  it("lets the words of the sign-in through: a wallet's own name for a refusal is not a library", () => {
+    add("rewards-1.js", "/^(UserRejectedRequestError|WalletSignMessageError|WalletConnectionError)$/.test(e.name)");
+    expect(problems()).toEqual([]);
+  });
+  it.each(leaks)("fails when the output contains %s", (_label, content, what) => {
+    add("leak.js", content);
+    expect(problems()).toEqual([`assets/leak.js: contains ${what}`]);
+  });
+
+  it("counts styles written into the page toward the CSS budget", () => {
+    const before = checkBuild(dist, {}).sizes.css;
+    const page = fs.readFileSync(path.join(dist, "index.html"), "utf8");
+    fs.writeFileSync(path.join(dist, "index.html"), `${page}<style>.a{color:red}.b{color:blue}</style>`);
+    expect(checkBuild(dist, {}).sizes.css).toBeGreaterThan(before);
+  });
+
+  it("does not count the first screen's styles twice when they are in the page and in the file the page names", () => {
+    const css = fs.readFileSync(path.join(dist, "assets", "app-1.css"), "utf8");
+    const once = checkBuild(dist, {}).sizes.css;
+    fs.writeFileSync(path.join(dist, "index.html"), `${FIRST}<script type="module" src="/assets/app-1.js"></script><style>${css}</style><link rel="stylesheet" crossorigin href="/assets/app-1.css" media="not all">`);
+    const report = checkBuild(dist, {});
+    expect(report.problems).toEqual([]);
+    expect(report.sizes.css).toBe(once);
+  });
+
+  it("fails when a script of the build needs a stylesheet that is not in the build", () => {
+    // What went wrong once: the first screen's stylesheet was folded into the page and its file removed,
+    // while code fetched later still listed the file among what it needs.
+    add("wallet-1.js", 'const deps=["assets/app-1.js","assets/gone-1.css"];');
+    expect(problems()).toEqual(["assets/wallet-1.js: needs assets/gone-1.css, which is not in the build"]);
+    add("gone-1.css", ".a{color:red}");
+    expect(problems()).toEqual([]);
+  });
+
+  it("fails when the page names a stylesheet that is not in the build", () => {
+    fs.writeFileSync(path.join(dist, "index.html"), FIRST + '<script type="module" src="/assets/app-1.js"></script><style>body{margin:0}</style><link rel="stylesheet" crossorigin href="/assets/app-9.css" media="not all">');
+    expect(problems()).toEqual(["index.html names assets/app-9.css, which is not in the build"]);
+  });
+
+  it("fails on a file at the top of the build that the site is not known to publish", () => {
+    for (const known of ["favicon.ico", "favicon-32.png", "icon-192.png", "icon-512.png", "apple-touch-icon.png", "site.webmanifest", "share.png", "share-private.png"]) fs.writeFileSync(path.join(dist, known), known.endsWith(".webmanifest") ? "{}" : "x");
+    fs.mkdirSync(path.join(dist, "coins"));
+    fs.mkdirSync(path.join(dist, "chains"));
+    fs.mkdirSync(path.join(dist, "brand"));
+    expect(problems()).toEqual([]);
+    fs.writeFileSync(path.join(dist, "ETH-branded.svg"), "<svg/>");
+    expect(problems()).toEqual(["ETH-branded.svg: not a file this site is known to publish (remove it from web/public, or add it to the list in scripts/check-build.ts)"]);
+  });
+
+  it("fails when an icon of the page, or of its manifest, is not a file of the build or is at another address", () => {
+    const head = '<link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48" /><link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" /><link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" /><link rel="manifest" href="/site.webmanifest" />';
+    const page = (links: string) => fs.writeFileSync(path.join(dist, "index.html"), FIRST + links + '<script type="module" src="/assets/app-1.js"></script>');
+    const manifest = (icons: unknown) => fs.writeFileSync(path.join(dist, "site.webmanifest"), JSON.stringify({ name: "SaplingDex", icons }));
+    page(head);
+    for (const file of ["favicon.ico", "favicon-32.png", "apple-touch-icon.png", "icon-192.png", "icon-512.png"]) fs.writeFileSync(path.join(dist, file), "x");
+    manifest([{ src: "/icon-192.png" }, { src: "/icon-512.png" }]);
+    expect(problems()).toEqual([]);
+    // One of the page's icons is missing from the build.
+    fs.rmSync(path.join(dist, "favicon.ico"));
+    expect(problems()).toEqual(["index.html names favicon.ico, which is not in the build"]);
+    fs.writeFileSync(path.join(dist, "favicon.ico"), "x");
+    // One of the manifest's is.
+    fs.rmSync(path.join(dist, "icon-512.png"));
+    expect(problems()).toEqual(["site.webmanifest names icon-512.png, which is not in the build"]);
+    fs.writeFileSync(path.join(dist, "icon-512.png"), "x");
+    // An icon fetched from anywhere but this site is refused, however its address is written.
+    for (const outside of ["https://example.com/icon.png", "//example.com/icon.png", "icon.png", ""]) {
+      manifest([{ src: outside }]);
+      expect(problems(), outside).toEqual([`site.webmanifest names the icon "${outside}", which is not an address of this site`]);
+    }
+    manifest([{ src: "/icon-192.png" }]);
+    page(head.replace("/favicon-32.png", "https://example.com/favicon-32.png"));
+    expect(problems()).toEqual(['index.html names the icon "https://example.com/favicon-32.png", which is not an address of this site']);
+    // A manifest that cannot be read is said so.
+    page(head);
+    fs.writeFileSync(path.join(dist, "site.webmanifest"), "{ not json");
+    expect(problems()).toEqual(["site.webmanifest: is not valid JSON"]);
+  });
+
+  it("lets NEAR's own mark be the icon of the NEAR coin and of the NEAR chain, and fails when it is published anywhere else", () => {
+    fs.mkdirSync(path.join(dist, "coins"));
+    fs.mkdirSync(path.join(dist, "chains"));
+    fs.mkdirSync(path.join(dist, "brand"));
+    fs.writeFileSync(path.join(dist, "coins", "aurora.svg"), "<svg/>");
+    fs.writeFileSync(path.join(dist, "coins", "near.webp"), "RIFF");
+    fs.writeFileSync(path.join(dist, "chains", "near.webp"), "RIFF");
+    expect(problems()).toEqual([]);
+    // Under another name, in another folder, among the built files or at the top of the site: refused.
+    fs.writeFileSync(path.join(dist, "coins", "wnear.webp"), "RIFF");
+    fs.writeFileSync(path.join(dist, "chains", "near-protocol.svg"), "<svg/>");
+    fs.writeFileSync(path.join(dist, "brand", "near.webp"), "RIFF");
+    fs.writeFileSync(path.join(dist, "assets", "near-mark-1.png"), "PNG");
+    const only = "NEAR's own mark is published only as the icon of the NEAR coin and of the NEAR chain";
+    expect(problems().sort()).toEqual([path.join("assets", "near-mark-1.png"), path.join("brand", "near.webp"), path.join("chains", "near-protocol.svg"), path.join("coins", "wnear.webp")].map((file) => `${file}: ${only}`));
+  });
+
+  it("fails when the sign-in's wallet code is part of the first page load, and not when it is in a file fetched later", () => {
+    expect(problems()).toEqual([]);
+    fs.rmSync(path.join(dist, "assets", "sign-in-1.js"));
+    fs.writeFileSync(path.join(dist, "assets", "app-1.js"), SIGN_IN_CODE);
+    expect(problems()).toEqual([IN_FIRST_LOAD("assets/app-1.js")]);
+  });
+
+  it("fails when the sign-in's wallet code is in no file of the build, or in more than one", () => {
+    fs.rmSync(path.join(dist, "assets", "sign-in-1.js"));
+    expect(problems()).toEqual([ONE_SIGN_IN(0)]);
+    add("sign-in-1.js", SIGN_IN_CODE);
+    add("rewards-2.js", `console.log(1);${SIGN_IN_CODE}`);
+    expect(problems()).toEqual([ONE_SIGN_IN(2)]);
+  });
+
+  it("fails when a file of the first page load fetches, at once, a file the page does not name: wallet code could reach the first load that way unread", () => {
+    // Fetched only when asked: no part of the first load.
+    fs.writeFileSync(path.join(dist, "assets", "app-1.js"), 'const open=()=>import("./sign-in-1.js");console.log(open)');
+    expect(problems()).toEqual([]);
+    // Fetched at once, by a file the page names, and not itself named by the page.
+    for (const line of ['import{a}from"./sign-in-1.js";console.log(a)', 'import"./sign-in-1.js";', 'console.log(1);export{a}from"./sign-in-1.js";', "import * as w from './sign-in-1.js';\nconsole.log(w)"]) {
+      fs.writeFileSync(path.join(dist, "assets", "app-1.js"), line);
+      expect(problems(), line).toEqual(["assets/app-1.js: fetches assets/sign-in-1.js at once, which the page does not name (the first page load must be only what the page names)"]);
+    }
+    // Named by the page, it is read like any first file: and it is the wallet code.
+    fs.writeFileSync(path.join(dist, "index.html"), FIRST + '<script type="module" src="/assets/app-1.js"></script><link rel="modulepreload" href="/assets/sign-in-1.js"><link rel="stylesheet" href="/assets/app-1.css">');
+    expect(problems()).toEqual([IN_FIRST_LOAD("assets/sign-in-1.js")]);
+  });
+
+  it("tells a file fetched at once from one fetched when asked", () => {
+    expect(staticImports('import{a as b}from"./a-1.js";import"./b-2.js";const c=()=>import("./c-3.js");export*from"./d-4.js";export{e}from"../e-5.js";const f="import x from \\"./not-code.js\\""')).toEqual(["./a-1.js", "./b-2.js", "./d-4.js", "../e-5.js"]);
+    expect(staticImports('console.log("hello")')).toEqual([]);
+  });
+
+  it("fails on a source map", () => {
+    add("app-1.js.map", "{}");
+    expect(problems()).toEqual(["assets/app-1.js.map: source maps are not shipped"]);
+  });
+
+  it("fails when a size budget is broken", () => {
+    add("app-1.js", noise(BUDGETS.script * 2));
+    expect(problems().some((p) => p.startsWith("initial JavaScript (gzip) is"))).toBe(true);
+    add("app-1.js", 'console.log("hello")');
+    add("app-1.css", noise(BUDGETS.css * 2));
+    expect(problems().some((p) => p.startsWith("CSS (gzip) is"))).toBe(true);
+    add("app-1.css", "body{margin:0}");
+    add("big.woff2", noise(BUDGETS.fonts + 1));
+    expect(problems()).toEqual([`fonts is ${((BUDGETS.fonts + 1) / 1024).toFixed(1)} KB, over the ${BUDGETS.fonts / 1024} KB budget`]);
+    // The first load is held to these: with no wallet library there is little to carry.
+    expect(BUDGETS).toEqual({ script: 150 * 1024, css: 24 * 1024, fonts: 90 * 1024 });
+  });
+
+  it("counts only the scripts the first page load fetches", () => {
+    add("wallet-lazy.js", noise(BUDGETS.script * 2));
+    expect(problems()).toEqual([]);
+  });
+
+  it("fails when the page refers to a script that was not built", () => {
+    fs.rmSync(path.join(dist, "assets", "app-1.js"));
+    expect(problems()).toEqual(["index.html refers to /assets/app-1.js, which is not in the build"]);
+  });
+});

@@ -1,0 +1,849 @@
+// Every state of every component on one page, to be looked over and for the screenshot run.
+// Nothing here talks to the server: all of it is drawn from the fixed examples below.
+
+import { bech32 } from "@scure/base";
+import { ArrowDownUp, ArrowLeft, Moon, RefreshCw, Search, SlidersHorizontal, Sun, TriangleAlert, Wallet, X } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { routingOf, type GasLine, type OrderView, type QuoteView, type TokenView } from "../../../shared/api.ts";
+import type { RecentOrder } from "../stores/orders.ts";
+import { chainName } from "../../../shared/chains.ts";
+import { Address } from "../components/Address.tsx";
+import { AddressField } from "../components/AddressField.tsx";
+import { Amount } from "../components/Amount.tsx";
+import { AmountInput, AmountOutput, UsdValue } from "../components/AmountField.tsx";
+import { Wordmark } from "../components/Brand.tsx";
+import { IconButton, PrimaryButton, SecondaryButton, TextButton } from "../components/Button.tsx";
+import { CoinButton } from "../components/CoinButton.tsx";
+import { CoinIcon } from "../components/CoinIcon.tsx";
+import { ChainTile, CoinRow, PickerNote } from "../components/CoinPicker.tsx";
+import { QuotePanel } from "../components/QuotePanel.tsx";
+import { RecentList } from "../components/RecentList.tsx";
+import { Notice } from "../components/Shell.tsx";
+import { SOCIAL_MARKS } from "../components/Social.tsx";
+import { socialLinks } from "../lib/site-logic.ts";
+import { COIN_ICONS, COIN_LOGOS } from "../lib/icons.ts";
+import { PRIVATE_UNAVAILABLE, primaryAction, reviewAction, reviewSentence, routingNote, type PrivacyMode } from "../lib/swap-logic.ts";
+import { DepositDetails, GasAlone, OrderContent, OrderDeleted } from "./OrderPage.tsx";
+import { setTheme, useTheme } from "../theme.ts";
+import "../styles/states.css";
+
+const coin = (symbol: string, chain: string, name: string, decimals: number, extra: Partial<TokenView> = {}): TokenView => ({ id: `${chain}:${symbol}`, symbol, name, chain, decimals, price: "1", contract: null, ...extra });
+const ETH = coin("ETH", "base", "Ethereum", 18, { price: "2530.26" });
+const USDT = coin("USDT", "sol", "Tether USD", 6);
+const HOOD = coin("USDC", "hood", "USD Coin", 6);
+// Two tokens with contracts: on a chain with an explorer link, as the picker's rows show them.
+const USDC_BASE = coin("USDC", "base", "USD Coin", 6, { contract: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913" });
+const WETH_BASE = coin("WETH", "base", "Wrapped Ether", 18, { contract: "0x4200000000000000000000000000000000000006" });
+const UNKNOWN = coin("BLACKDRAGON", "near", "Black Dragon", 24);
+
+// Example addresses are made up from fixed text (a hash of a phrase), so they are nobody's.
+const SOL_ADDRESS = "DZrFMBPK8J5Jf6KYNDrj4mo2QYAGgQaxsxyyCwQtAWjP";
+const EVM_ADDRESS = "0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB";
+// The longest kind of address the site accepts: a Cardano base address, 103 characters. Made from fixed bytes, so it is nobody's.
+const LONG_ADDRESS = bech32.encode("addr", bech32.toWords(Uint8Array.from([0x01, ...Array.from({ length: 56 }, (_, i) => (i * 7 + 3) % 256)])), 200);
+const STELLAR_ADDRESS = "GAQMXQJ2UFA5ECB2JJ3GUYQF46ROPVINVWAMN7KNR3OAMDHLQ46LFRBW";
+
+const QUOTE: QuoteView = {
+  from: ETH.id,
+  to: USDT.id,
+  amountIn: "500000000000000000",
+  amountOut: "1261340512",
+  minAmountOut: "1248727106",
+  amountInUsd: "1265.13",
+  amountOutUsd: "1260.59",
+  slippageBps: 100,
+  timeEstimate: 34,
+  // As the site runs: no fee of SaplingDex's, and the provider's own.
+  fees: { appBps: 0, providerBps: 20, appAmount: "0", providerAmount: "1000000000000000" },
+  withdrawFee: "302700",
+  refundFee: null,
+  priceImpactBps: 36,
+  routing: routingOf("public"),
+  serverNow: "2026-10-08T12:00:00.000Z",
+};
+// The same swap with private routing: the same fees, and a little less out.
+const PRIVATE_QUOTE: QuoteView = { ...QUOTE, amountOut: "1260079171", minAmountOut: "1247478379", amountOutUsd: "1259.33", routing: routingOf("basic") };
+// And where the server is set to take a fee of its own: the row then gives it in figures.
+const FEE_QUOTE: QuoteView = { ...PRIVATE_QUOTE, fees: { ...QUOTE.fees, appBps: 20, appAmount: "1000000000000000" } };
+
+// A fixed moment, so the page looks the same every time it is photographed.
+const NOW = Date.parse("2026-10-08T12:10:00.000Z");
+const at = (minutes: number) => new Date(NOW + minutes * 60_000).toISOString();
+const HASH = `0x${"3f".repeat(32)}`;
+
+function order(overrides: Partial<OrderView> = {}): OrderView {
+  return {
+    id: "Ex4mpleOrderIdForTheStates0",
+    status: "waiting",
+    createdAt: at(-10),
+    updatedAt: at(-1),
+    statusSince: at(-1),
+    pay: "manual",
+    from: { id: ETH.id, symbol: "ETH", name: "Ethereum", chain: "base", decimals: 18, contract: null },
+    to: { id: USDT.id, symbol: "USDT", name: "Tether USD", chain: "sol", decimals: 6, contract: "x" },
+    amountIn: QUOTE.amountIn,
+    amountOut: QUOTE.amountOut,
+    minAmountOut: QUOTE.minAmountOut,
+    amountInUsd: QUOTE.amountInUsd,
+    amountOutUsd: QUOTE.amountOutUsd,
+    slippageBps: 100,
+    timeEstimate: 34,
+    fees: QUOTE.fees,
+    withdrawFee: QUOTE.withdrawFee,
+    refundFee: null,
+    recipient: SOL_ADDRESS,
+    refundTo: EVM_ADDRESS,
+    rewardsAddress: null,
+    routing: routingOf("public"),
+    depositAddress: "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359",
+    depositMemo: null,
+    depositsOpen: true,
+    deadline: at(50),
+    depositTxHash: null,
+    depositProven: false,
+    depositTxUrl: null,
+    details: null,
+    serverNow: new Date(NOW).toISOString(),
+    ...overrides,
+  };
+}
+const details = (extra: Partial<NonNullable<OrderView["details"]>>): NonNullable<OrderView["details"]> => ({ originTxs: [], destinationTxs: [], depositedAmount: null, amountIn: null, amountOut: null, refundedAmount: null, refundReason: null, ...extra });
+const DEPOSIT_TX = { hash: HASH, url: `https://basescan.org/tx/${HASH}` };
+
+/** The coins the picker shows first, each on a chain it lives on, then every other coin that has artwork: by its symbol, or (the third part) by its contract. */
+const ICON_SAMPLES: [string, string, (string | null)?][] = [
+  ["BNB", "bsc"],
+  ["USDT", "bsc"],
+  ["USDC", "base"],
+  ["ETH", "eth"],
+  ["ETH", "base"],
+  ["ETH", "arb"],
+  ["BTC", "btc"],
+  ["SOL", "sol"],
+  ["USDT", "sol"],
+  ["ZEC", "zec"],
+  ["USDT", "tron"],
+  ...[...COIN_ICONS]
+    .sort()
+    .filter((symbol) => !["bnb", "usdt", "usdc", "eth", "btc", "sol", "zec"].includes(symbol))
+    .map((symbol): [string, string] => [symbol.toUpperCase(), "eth"]),
+  ...Object.entries(COIN_LOGOS).map(([key, name]): [string, string, string | null] => [name.toUpperCase(), key.slice(0, key.indexOf(":")), key.slice(key.indexOf(":") + 1) || null]),
+];
+
+const RECENT: RecentOrder[] = [
+  { id: "Ex4mpleOrderIdForTheStates3", createdAt: at(-2), from: { symbol: "ETH", chain: "base", decimals: 18 }, to: { symbol: "USDT", chain: "sol", decimals: 6 } },
+  { id: "Ex4mpleOrderIdForTheStates2", createdAt: at(-4), from: { symbol: "USDC", chain: "base", decimals: 6 }, to: { symbol: "ETH", chain: "arb", decimals: 18 } },
+  { id: "Ex4mpleOrderIdForTheStates1", createdAt: at(-90), from: { symbol: "ETH", chain: "base", decimals: 18 }, to: { symbol: "USDT", chain: "sol", decimals: 6 } },
+  { id: "Ex4mpleOrderIdForTheStates0", createdAt: at(-3000), from: { symbol: "BTC", chain: "btc", decimals: 8 }, to: { symbol: "USDC", chain: "base", decimals: 6 } },
+];
+
+
+
+const ORDERS: Array<{ label: string; order: OrderView; reconnecting?: boolean; privacyMode?: PrivacyMode }> = [
+  { label: "Waiting for the deposit", order: order() },
+  { label: "Made with private routing: the tag beside the title, and a row in the details (open them)", order: order({ amountOut: PRIVATE_QUOTE.amountOut, minAmountOut: PRIVATE_QUOTE.minAmountOut, fees: PRIVATE_QUOTE.fees, routing: routingOf("basic") }), privacyMode: "basic" },
+  { label: "A public order where the server routes privately: its details say so (open them)", order: order(), privacyMode: "basic" },
+  { label: "Waiting, a deposit that needs a memo", order: order({ from: { id: "stellar:XLM", symbol: "XLM", name: "Stellar", chain: "stellar", decimals: 7, contract: null }, amountIn: "25000000000", depositAddress: STELLAR_ADDRESS, depositMemo: "184467440737", refundTo: STELLAR_ADDRESS }) },
+  { label: "Waiting, deposits closed (2 minutes before the deadline)", order: order({ depositsOpen: false, depositAddress: null, deadline: at(1) }) },
+  { label: "Deposit seen", order: order({ status: "deposit_seen", depositProven: true, depositAddress: null, depositsOpen: false, depositTxHash: HASH, depositTxUrl: DEPOSIT_TX.url }) },
+  { label: "Swapping", order: order({ status: "swapping", depositProven: true, depositAddress: null, depositsOpen: false, details: details({ originTxs: [DEPOSIT_TX] }) }) },
+  { label: "Swapping, past twice its estimate", order: order({ status: "swapping", statusSince: at(-9), depositProven: true, depositAddress: null, depositsOpen: false, details: details({ originTxs: [DEPOSIT_TX] }) }) },
+  { label: "Delivered", order: order({ status: "delivered", depositProven: true, depositAddress: null, depositsOpen: false, details: details({ originTxs: [DEPOSIT_TX], destinationTxs: [{ hash: "5VERv8NMvzbJMEkV8xnrLkEaWRtSz9CosKDYjCJjBRnbJLgp8uirBgmQpjKhoR4tjF3ZpRzrFmBV6UjKdiSZkQUW", url: null }], amountOut: "1261900000" }) }) },
+  { label: "Refunded", order: order({ status: "refunded", depositProven: true, depositAddress: null, depositsOpen: false, details: details({ originTxs: [DEPOSIT_TX], refundedAmount: "499000000000000000", refundReason: "SLIPPAGE_EXCEEDED" }) }) },
+  { label: "Deposit too small", order: order({ status: "deposit_too_small", depositProven: true, depositAddress: null, depositsOpen: false, details: details({ originTxs: [DEPOSIT_TX], depositedAmount: "250000000000000000" }) }) },
+  { label: "Failed", order: order({ status: "failed", depositProven: true, depositAddress: null, depositsOpen: false, depositTxHash: HASH }) },
+  { label: "Expired", order: order({ status: "expired", depositAddress: null, depositsOpen: false, deadline: at(-20) }) },
+  { label: "Connection lost: the last known state stays", order: order({ status: "swapping", depositProven: true, depositAddress: null, depositsOpen: false }), reconnecting: true },
+];
+
+// ---- A swap with gas ----
+// The sample swap, and beside it the second, small order that delivers a little SOL to the same
+// Solana address. It is an order of its own: its own ID, its own amount and its own deposit address.
+const GAS_DEPOSIT = "0x5b548182C1DA2fCe1d778851E4EeA0D340c4D53c";
+const GAS_HASH = `0x${"a7".repeat(32)}`;
+const PAID = { depositProven: true, depositAddress: null, depositsOpen: false } as const;
+
+/** The gas order: about three dollars of ETH for SOL, always privately routed. */
+function gasOrder(overrides: Partial<OrderView> = {}): OrderView {
+  return order({
+    id: "Ex4mpleGasOrderForTheStates",
+    gasOrder: true,
+    to: { id: "sol:SOL", symbol: "SOL", name: "Solana", chain: "sol", decimals: 9, contract: null },
+    amountIn: "1185650000000000",
+    amountOut: "20145310",
+    minAmountOut: "19943856",
+    amountInUsd: "3.00",
+    amountOutUsd: "2.97",
+    fees: { appBps: 0, providerBps: 20, appAmount: "0", providerAmount: "2371300000000" },
+    withdrawFee: null,
+    routing: routingOf("basic"),
+    depositAddress: GAS_DEPOSIT,
+    ...overrides,
+  });
+}
+
+/** The sample swap as it is where gas was asked for with it: privately routed, and carrying what is known of the gas order. */
+const withGas = (gas: GasLine, overrides: Partial<OrderView> = {}): OrderView => order({ amountOut: PRIVATE_QUOTE.amountOut, minAmountOut: PRIVATE_QUOTE.minAmountOut, fees: PRIVATE_QUOTE.fees, routing: routingOf("basic"), gas, ...overrides });
+const SWAPPING = { status: "swapping", ...PAID, details: details({ originTxs: [DEPOSIT_TX] }) } as const;
+const GAS_DELIVERED = gasOrder({ status: "delivered", ...PAID, depositTxHash: GAS_HASH, depositTxUrl: `https://basescan.org/tx/${GAS_HASH}`, details: details({ destinationTxs: [{ hash: "3wZ1kq7dVhB5p2mXcJ8sYtQe9LfRuN4aG6oHbTiKxEyCvD2jWnUzMrPgS7FhA1qXk8tBoYc5eV9uKdJmR3iNwZs", url: null }], amountOut: "20151200" }) });
+
+const GAS_ORDERS: Array<{ label: string; order: OrderView; gone?: boolean }> = [
+  { label: "Both waiting, sent by hand: two deposits, each with its own address and amount (tick the boxes)", order: withGas({ made: true, order: gasOrder() }) },
+  { label: "The swap paid, the gas still waiting", order: withGas({ made: true, order: gasOrder() }, SWAPPING) },
+  { label: "The swap paid, the gas deposit seen", order: withGas({ made: true, order: gasOrder({ status: "deposit_seen", ...PAID, depositTxHash: GAS_HASH, depositTxUrl: `https://basescan.org/tx/${GAS_HASH}` }) }, SWAPPING) },
+  { label: "Swap delivered, gas delivered", order: withGas({ made: true, order: GAS_DELIVERED }, ORDERS.find((sample) => sample.label === "Delivered")?.order) },
+  { label: "Swap delivered, gas still being swapped", order: withGas({ made: true, order: gasOrder({ status: "swapping", ...PAID }) }, ORDERS.find((sample) => sample.label === "Delivered")?.order) },
+  { label: "Gas was not added", order: withGas({ made: false }) },
+  { label: "The gas ran out unpaid; the swap goes on", order: withGas({ made: true, order: gasOrder({ status: "expired", depositAddress: null, depositsOpen: false, deadline: at(-5) }) }, SWAPPING) },
+  { label: "The gas refunded", order: withGas({ made: true, order: gasOrder({ status: "refunded", ...PAID, details: details({ refundedAmount: "1183000000000000", refundReason: "SLIPPAGE_EXCEEDED" }) }) }, SWAPPING) },
+  { label: "The gas deposit too small", order: withGas({ made: true, order: gasOrder({ status: "deposit_too_small", ...PAID, details: details({ depositedAmount: "1000000000000000" }) }) }, SWAPPING) },
+  { label: "The gas failed", order: withGas({ made: true, order: gasOrder({ status: "failed", ...PAID, depositTxHash: GAS_HASH }) }, SWAPPING) },
+  { label: "Made in Ghost mode: the gas order finished first, and its record is deleted", order: withGas({ made: true, order: null, ended: "delivered" }, { ...SWAPPING, ghost: true }) },
+  { label: "Made in Ghost mode: the swap's record is deleted while the page shows it, the gas order still waiting", order: withGas({ made: true, order: gasOrder({ ghost: true }) }, { ...(ORDERS.find((sample) => sample.label === "Delivered")?.order ?? {}), ghost: true }), gone: true },
+  { label: "A gas order that is not this swap's own (it would deliver to another address): one sentence, and no way to pay it", order: withGas({ made: true, order: gasOrder({ recipient: STELLAR_ADDRESS }) }) },
+  { label: "The gas order opened by its own ID", order: gasOrder() },
+];
+
+
+function Group({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="states-group">
+      <h2 className="states-title">{title}</h2>
+      {children}
+    </section>
+  );
+}
+
+function Case({ label, children, wide = false }: { label: string; children: ReactNode; wide?: boolean }) {
+  return (
+    <div className="states-case" data-wide={wide || undefined}>
+      <p className="states-label muted">{label}</p>
+      {children}
+    </div>
+  );
+}
+
+const never = () => undefined;
+
+/** The card's two tools, as they stand at the right end of the row above its fields. */
+const CARD_TOOLS = (
+  <>
+    <button type="button" className="tool" aria-label="1.00% slippage limit. Change" title="Slippage limit">
+      <SlidersHorizontal size={16} strokeWidth={1.5} aria-hidden="true" />
+    </button>
+    <button type="button" className="tool" aria-label="Refresh the quote" title="Refresh the quote">
+      <RefreshCw size={16} strokeWidth={1.5} aria-hidden="true" />
+    </button>
+  </>
+);
+
+/** The card's button when a private quote could not be had, worked out by the card's own rule. */
+const NOT_AVAILABLE = primaryAction({
+  paused: false,
+  coinsReady: true,
+  from: ETH,
+  to: USDT,
+  amountText: "0.5",
+  recipient: SOL_ADDRESS,
+  refundTo: EVM_ADDRESS,
+  quote: "none",
+  problem: { code: "private_unavailable", message: PRIVATE_UNAVAILABLE, detail: {} },
+  impactUnconfirmed: false,
+});
+
+export default function StatesPage() {
+  const theme = useTheme();
+  const [typed, setTyped] = useState("0.5");
+  const [address, setAddress] = useState("");
+  const [chainSearch, setChainSearch] = useState("");
+  const [impact, setImpact] = useState(false);
+  const [ticked, setTicked] = useState(false);
+
+  return (
+    <main className="main states" id="main">
+      <header className="states-head">
+        <Wordmark />
+        <h1 className="states-heading">Component states</h1>
+        <SecondaryButton onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>{theme === "dark" ? "Light theme" : "Dark theme"}</SecondaryButton>
+      </header>
+
+      <Group title="Buttons">
+        <Case label="Primary">
+          <PrimaryButton>Review swap</PrimaryButton>
+        </Case>
+        <Case label="Primary, cannot act: the label says why">
+          <PrimaryButton disabled>Enter an amount</PrimaryButton>
+        </Case>
+        <Case label="Primary, working">
+          <PrimaryButton disabled busy>
+            Getting a quote…
+          </PrimaryButton>
+        </Case>
+        <Case label="Secondary">
+          <SecondaryButton>
+            <Wallet size={16} strokeWidth={1.5} aria-hidden="true" />
+            Connect
+          </SecondaryButton>
+        </Case>
+        <Case label="Secondary, disabled">
+          <SecondaryButton disabled>Connecting…</SecondaryButton>
+        </Case>
+        <Case label="Chips: default, chosen, with an icon">
+          <div className="states-row">
+            <button type="button" className="button-chip" aria-pressed="false">
+              Ethereum
+            </button>
+            <button type="button" className="button-chip" aria-pressed="true">
+              All
+            </button>
+            <button type="button" className="button-chip">
+              <Wallet size={16} strokeWidth={1.5} aria-hidden="true" />
+              Wallet
+            </button>
+          </div>
+        </Case>
+        <Case label="Text button and link">
+          <div className="states-row">
+            <TextButton>Pay without connecting</TextButton>
+            <a href="/terms">Terms of Use</a>
+          </div>
+        </Case>
+        <Case label="Chips and a text button that cannot be pressed">
+          <div className="states-row">
+            <button type="button" className="button-chip" disabled>
+              Ethereum
+            </button>
+            <button type="button" className="button-chip" disabled>
+              <Wallet size={16} strokeWidth={1.5} aria-hidden="true" />
+              Wallet
+            </button>
+            <TextButton disabled>Change</TextButton>
+          </div>
+        </Case>
+        <Case label="Icon buttons">
+          <div className="states-row">
+            <IconButton label="Close">
+              <X size={20} strokeWidth={1.5} aria-hidden="true" />
+            </IconButton>
+            <IconButton label="Switch theme">{theme === "dark" ? <Sun size={20} strokeWidth={1.5} aria-hidden="true" /> : <Moon size={20} strokeWidth={1.5} aria-hidden="true" />}</IconButton>
+            <button type="button" className="flip states-flip" aria-label="Swap the two coins">
+              <ArrowDownUp size={16} strokeWidth={1.5} aria-hidden="true" />
+            </button>
+            <button type="button" className="flip states-flip" aria-label="Swap the two coins" disabled>
+              <ArrowDownUp size={16} strokeWidth={1.5} aria-hidden="true" />
+            </button>
+          </div>
+        </Case>
+        <Case label="The card's tools: the slippage limit, a fresh quote, and one that cannot be pressed">
+          <div className="states-row">
+            <button type="button" className="tool" aria-label="1.00% slippage limit. Change" title="Slippage limit">
+              <SlidersHorizontal size={16} strokeWidth={1.5} aria-hidden="true" />
+            </button>
+            <button type="button" className="tool" aria-label="Refresh the quote" title="Refresh the quote">
+              <RefreshCw size={16} strokeWidth={1.5} aria-hidden="true" />
+            </button>
+            <button type="button" className="tool" aria-label="Refresh the quote" title="Refresh the quote" disabled>
+              <RefreshCw size={16} strokeWidth={1.5} aria-hidden="true" />
+            </button>
+          </div>
+        </Case>
+        <Case label="Tick-box: empty and ticked">
+          <label className="check">
+            <input type="checkbox" checked={ticked} onChange={(event) => setTicked(event.target.checked)} />
+            <span>I have read and accept the Terms of Use.</span>
+          </label>
+          <label className="check">
+            <input type="checkbox" checked readOnly />
+            <span>I understand and want to continue</span>
+          </label>
+        </Case>
+        <Case label="Tick-box that cannot be changed: empty and ticked">
+          <label className="check">
+            <input type="checkbox" disabled />
+            <span>I have read and accept the Terms of Use.</span>
+          </label>
+          <label className="check">
+            <input type="checkbox" checked disabled readOnly />
+            <span>I have read and accept the Terms of Use.</span>
+          </label>
+        </Case>
+      </Group>
+
+      <Group title="Amounts">
+        <Case label="Amount field: typing (try the three test amounts)">
+          <div className="field">
+            <div className="field-head">
+              <span className="field-label">You pay</span>
+              <span className="balance">
+                <span>
+                  Balance: <Amount raw="1234567890000000000" decimals={18} /> ETH
+                </span>
+                <button type="button" className="balance-max">
+                  Max
+                </button>
+              </span>
+            </div>
+            <div className="field-row">
+              <CoinButton token={ETH} label="You pay" onClick={never} />
+              <div className="field-value">
+                <AmountInput id="states-amount" value={typed} decimals={18} autoFocus={false} onChange={setTyped} />
+                <UsdValue value="1265.13" />
+              </div>
+            </div>
+          </div>
+        </Case>
+        {(["0.00000001", "123456789.123456", "1000000000"] as const).map((value) => (
+          <Case key={value} label={`Amount field: ${value}`}>
+            <div className="field">
+              <div className="field-head">
+                <span className="field-label">You pay</span>
+              </div>
+              <div className="field-row">
+                <CoinButton token={ETH} label="You pay" onClick={never} />
+                <div className="field-value">
+                  <AmountInput id={`states-${value}`} value={value} decimals={18} autoFocus={false} onChange={never} />
+                  <UsdValue value={null} />
+                </div>
+              </div>
+            </div>
+          </Case>
+        ))}
+        <Case label="Empty">
+          <div className="field">
+            <div className="field-head">
+              <span className="field-label">You pay</span>
+            </div>
+            <div className="field-row">
+              <CoinButton token={null} label="You pay" onClick={never} />
+              <div className="field-value">
+                <AmountInput id="states-empty" value="" decimals={18} autoFocus={false} onChange={never} />
+                <UsdValue value={null} />
+              </div>
+            </div>
+          </div>
+        </Case>
+        <Case label="Amount received: first load, ready, refreshing">
+          <div className="field">
+            <div className="field-head">
+              <span className="field-label">You receive</span>
+            </div>
+            <div className="field-row">
+              <CoinButton token={USDT} label="You receive" onClick={never} />
+              <div className="field-value">
+                <AmountOutput id="states-out-loading" raw={null} decimals={6} symbol="USDT" stale={false} loading />
+                <UsdValue value={null} />
+              </div>
+            </div>
+          </div>
+          <div className="field">
+            <div className="field-head">
+              <span className="field-label">You receive</span>
+            </div>
+            <div className="field-row">
+              <CoinButton token={USDT} label="You receive" onClick={never} />
+              <div className="field-value">
+                <AmountOutput id="states-out-ready" raw="1261340512" decimals={6} symbol="USDT" stale={false} loading={false} />
+                <UsdValue value="1260.59" />
+              </div>
+            </div>
+          </div>
+          <div className="field">
+            <div className="field-head">
+              <span className="field-label">You receive</span>
+            </div>
+            <div className="field-row">
+              <CoinButton token={HOOD} label="You receive" onClick={never} />
+              <div className="field-value">
+                <AmountOutput id="states-out-stale" raw="1261340512" decimals={6} symbol="USDC" stale loading />
+                <UsdValue value="1260.59" />
+              </div>
+            </div>
+          </div>
+        </Case>
+        <Case label="Small amounts and the exact value">
+          <p>
+            <Amount raw="1234" decimals={9} symbol="SOL" /> · <Amount raw="12345678" decimals={18} symbol="ETH" /> · <Amount raw="371200000" decimals={6} symbol="USDT" /> · <Amount raw="1234567891" decimals={6} symbol="USDT" />
+          </p>
+        </Case>
+      </Group>
+
+      <Group title="Coins">
+        <Case label="Coin buttons: wallet coin, long chain name, no icon, loading">
+          <div className="states-row">
+            <CoinButton token={ETH} label="You pay" onClick={never} />
+            <CoinButton token={HOOD} label="You pay" onClick={never} />
+            <CoinButton token={UNKNOWN} label="You pay" onClick={never} />
+            <CoinButton token={null} label="You pay" onClick={never} />
+          </div>
+        </Case>
+        <Case label="Every coin icon on the list, with its chain badge, at 32 px" wide>
+          <ul className="states-icons">
+            {ICON_SAMPLES.map(([symbol, chain, contract]) => (
+              <li key={`${symbol}-${chain}-${contract ?? ""}`}>
+                <CoinIcon symbol={symbol} chain={chain} contract={contract} />
+                <span className="muted">
+                  {symbol} · {chainName(chain)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Case>
+        <Case label="The same at 24 px, and a coin with no artwork" wide>
+          <ul className="states-icons">
+            {ICON_SAMPLES.slice(0, 12).map(([symbol, chain]) => (
+              <li key={`${symbol}-${chain}`}>
+                <CoinIcon symbol={symbol} chain={chain} size={24} />
+                <span className="muted">{symbol}</span>
+              </li>
+            ))}
+            <li>
+              <CoinIcon symbol="BLACKDRAGON" chain="near" />
+              <span className="muted">No artwork, 32</span>
+            </li>
+            <li>
+              <CoinIcon symbol="BLACKDRAGON" chain="near" size={24} />
+              <span className="muted">No artwork, 24</span>
+            </li>
+          </ul>
+        </Case>
+        <Case label="Picker: the way back and the title, and a search field">
+          <div className="picker-head">
+            <button type="button" className="picker-back" aria-label="Back to the swap" title="Back">
+              <ArrowLeft size={20} strokeWidth={1.5} aria-hidden="true" />
+            </button>
+            <h3 className="picker-title">Select a token you pay</h3>
+          </div>
+          <label className="picker-search">
+            <Search size={16} strokeWidth={1.5} aria-hidden="true" />
+            <span className="sr-only">Search by chain name</span>
+            <input className="picker-input" type="text" placeholder="Search by chain name" value={chainSearch} onChange={(event) => setChainSearch(event.target.value)} />
+          </label>
+        </Case>
+        <Case label="Chain tiles: plain, chosen, a long name, a chain with no artwork">
+          <div className="picker-chains states-chains" role="listbox" aria-label="Chain">
+            <ChainTile chain="bsc" name="BNB Chain" selected={false} tabbable />
+            <ChainTile chain="eth" name="Ethereum" selected />
+            <ChainTile chain="sol" name="Solana" selected={false} />
+            <ChainTile chain="btc" name="Bitcoin" selected={false} />
+            <ChainTile chain="hood" name="Robinhood Chain" selected={false} />
+            <ChainTile chain="qtc" name="Quantus" selected={false} />
+          </div>
+        </Case>
+        <Case label="Picker rows: a chain's own coin, a token with its contract, under the arrow keys, chosen, on the other side, on another chain, loading">
+          <div className="picker-list" role="grid" aria-label="Coins on Base">
+            {[
+              { token: ETH, active: false, chosen: false, otherSide: null, elsewhere: false },
+              { token: USDC_BASE, active: false, chosen: false, otherSide: null, elsewhere: false },
+              { token: WETH_BASE, active: true, chosen: false, otherSide: null, elsewhere: false },
+              { token: HOOD, active: false, chosen: true, otherSide: null, elsewhere: false },
+              { token: UNKNOWN, active: false, chosen: false, otherSide: "You receive", elsewhere: false },
+              { token: USDT, active: false, chosen: false, otherSide: null, elsewhere: true },
+            ].map(({ token, active, chosen, otherSide, elsewhere }, index) => (
+              <CoinRow key={token.id} token={token} index={index} id={`states-coin-${index}`} active={active} chosen={chosen} otherSide={otherSide} elsewhere={elsewhere} twin={false} />
+            ))}
+          </div>
+          <div className="picker-row" aria-hidden="true">
+            <span className="skeleton skeleton-icon" />
+            <span className="picker-row-text">
+              <span className="skeleton skeleton-line" />
+              <span className="skeleton skeleton-line skeleton-line-short" />
+            </span>
+          </div>
+        </Case>
+        <Case label="Picker: nothing found, a contract that is not listed, and no such chain">
+          <PickerNote title="No coins match.">Check the spelling, or paste the coin's contract address.</PickerNote>
+          <PickerNote title="Not supported.">That contract is not on the list of coins that can be swapped here. Search by name to see what is.</PickerNote>
+          <PickerNote title="No chain matches.">Check the spelling: every chain on the coin list is here.</PickerNote>
+        </Case>
+      </Group>
+
+      <Group title="Addresses">
+        <Case label="Empty, with its hint">
+          <AddressField label="Receiving address" hint="Your USDT is sent here. Use a wallet you control." chain="sol" value={address} onChange={setAddress} />
+        </Case>
+        <Case label="Valid">
+          <AddressField label="Receiving address" hint="Your USDT is sent here. Use a wallet you control." chain="sol" value={SOL_ADDRESS} onChange={never} />
+        </Case>
+        <Case label="For another chain">
+          <AddressField label="Receiving address" hint="Your USDT is sent here. Use a wallet you control." chain="sol" value={EVM_ADDRESS} onChange={never} />
+        </Case>
+        <Case label="A contract where a wallet is expected">
+          <AddressField label="Refund address" hint="If the swap fails, your ETH comes back here." chain="base" value={EVM_ADDRESS} onChange={never} contractCheck={async () => true} />
+        </Case>
+        <Case label="A chain where exchanges ask for a memo">
+          <AddressField label="Receiving address" chain="stellar" value={STELLAR_ADDRESS} onChange={never} memoNote />
+        </Case>
+        <Case label="The longest address, 103 characters">
+          <AddressField label="Receiving address" hint="Your ADA is sent here. Use a wallet you control." chain="cardano" value={LONG_ADDRESS} onChange={never} />
+        </Case>
+        <Case label="Shown in full, ends emphasised">
+          <p className="review-address-value">
+            <Address value={SOL_ADDRESS} />
+          </p>
+          <p className="review-address-value">
+            <Address value={LONG_ADDRESS} />
+          </p>
+        </Case>
+      </Group>
+
+      <Group title="Quote">
+        <Case label="No amount yet: nothing is shown" wide>
+          <QuotePanel quote={null} from={ETH} to={USDT} loading={false} stale={false} impactConfirmed={false} onConfirmImpact={never} />
+        </Case>
+        <Case label="First load" wide>
+          <QuotePanel quote={null} from={ETH} to={USDT} loading stale={false} held impactConfirmed={false} onConfirmImpact={never} />
+        </Case>
+        <Case label="Ready: one line (press it to see the fees)" wide>
+          <QuotePanel quote={QUOTE} from={ETH} to={USDT} loading={false} stale={false} held impactConfirmed={false} onConfirmImpact={never} />
+        </Case>
+        <Case label="Ready, opened: the fees" wide>
+          <QuotePanel quote={QUOTE} from={ETH} to={USDT} loading={false} stale={false} held startOpen impactConfirmed={false} onConfirmImpact={never} />
+        </Case>
+        <Case label="Sending it yourself: nothing is said of points until an address for them is given" wide>
+          <QuotePanel quote={QUOTE} from={ETH} to={USDT} loading={false} stale={false} held pointsShown={false} impactConfirmed={false} onConfirmImpact={never} />
+        </Case>
+        <Case label="A swap between two dollar coins: its points are counted like any other swap's" wide>
+          <QuotePanel quote={{ ...QUOTE, amountIn: "1265130000", amountInUsd: "1265.13", fees: { ...QUOTE.fees, providerAmount: "2530260" } }} from={HOOD} to={USDT} loading={false} stale={false} held impactConfirmed={false} onConfirmImpact={never} />
+        </Case>
+        <Case label="Refreshing: old numbers dimmed" wide>
+          <QuotePanel quote={QUOTE} from={ETH} to={USDT} loading stale held startOpen impactConfirmed={false} onConfirmImpact={never} />
+        </Case>
+        <Case label="A slow swap" wide>
+          <QuotePanel quote={{ ...QUOTE, timeEstimate: 812 }} from={ETH} to={USDT} loading={false} stale={false} held startOpen impactConfirmed={false} onConfirmImpact={never} />
+        </Case>
+        <Case label="A very slow swap: the time still fits its line" wide>
+          <QuotePanel quote={{ ...QUOTE, timeEstimate: 6840 }} from={ETH} to={USDT} loading={false} stale={false} held startOpen impactConfirmed={false} onConfirmImpact={never} />
+        </Case>
+        <Case label="Price impact above 3%" wide>
+          <QuotePanel quote={{ ...QUOTE, priceImpactBps: 420 }} from={ETH} to={USDT} loading={false} stale={false} impactConfirmed={false} onConfirmImpact={never} />
+        </Case>
+        <Case label="Price impact above 10%: needs a tick" wide>
+          <QuotePanel quote={{ ...QUOTE, priceImpactBps: 1350 }} from={ETH} to={USDT} loading={false} stale={false} impactConfirmed={impact} onConfirmImpact={setImpact} />
+        </Case>
+        <Case label="A long chain name and no network fee stated" wide>
+          <QuotePanel quote={{ ...QUOTE, withdrawFee: null }} from={ETH} to={HOOD} loading={false} stale={false} held startOpen impactConfirmed={false} onConfirmImpact={never} />
+        </Case>
+      </Group>
+
+      <Group title="Review">
+        <Case label="The review sheet's button, in each state">
+          {(
+            [
+              { phase: "review", quote: "ready", termsAccepted: false },
+              { phase: "review", quote: "ready", termsAccepted: true },
+              { phase: "creating", quote: "ready", termsAccepted: true },
+              { phase: "moved", quote: "ready", termsAccepted: true },
+              { phase: "review", quote: "ready", termsAccepted: true, settling: true },
+              { phase: "review", quote: "ready", termsAccepted: true, impactUnconfirmed: true },
+              { phase: "review", quote: "expired", termsAccepted: true },
+              { phase: "review", quote: "loading", termsAccepted: true },
+              { phase: "mismatch", quote: "ready", termsAccepted: true },
+              { phase: "unavailable", quote: "ready", termsAccepted: true },
+            ] as const
+          ).map((input, index) => {
+            const action = reviewAction(input);
+            return (
+              <PrimaryButton key={index} disabled={action.disabled} busy={action.busy}>
+                {action.label}
+              </PrimaryButton>
+            );
+          })}
+        </Case>
+        <Case label="What the line above the button can say">
+          <p className="review-problem" data-kind="plain">
+            This quote has expired. Refresh it to see the numbers as they are now.
+          </p>
+          <p className="review-problem" data-kind="error">
+            The order that came back does not match what you reviewed (the receiving address). Nothing was sent, and nothing should be sent to it.
+          </p>
+          <p className="review-problem" data-kind="error">
+            This swap can't be processed.
+          </p>
+          <p className="review-problem" data-kind="error">
+            {PRIVATE_UNAVAILABLE} No order was made.
+          </p>
+          <p className="notice notice-warning" role="note">
+            <TriangleAlert size={16} strokeWidth={1.5} aria-hidden="true" />
+            <span>The price moved. No order was made. Check the new numbers and confirm again.</span>
+          </p>
+        </Case>
+        <Case label="The card when a quote could not be had">
+          <p className="card-message">No route for this pair right now.</p>
+          <PrimaryButton>Try again</PrimaryButton>
+          <p className="card-message">The quote is taking too long. Try again.</p>
+          <PrimaryButton>Try again</PrimaryButton>
+        </Case>
+      </Group>
+
+      <Group title="Private routing">
+        <Case label="The tag">
+          <div className="states-row">
+            <span className="chip routing-tag" data-tone="private">
+              Private
+            </span>
+          </div>
+        </Case>
+        <Case label="The card's row above the fields after choosing public routing for this swap: the way back">
+          <div className="card-tools">
+            <button type="button" className="routing-switch card-routing">
+              Use private routing
+            </button>
+            {CARD_TOOLS}
+          </div>
+        </Case>
+        <Case label="The same row where the server routes in public: its left end is empty">
+          <div className="card-tools">{CARD_TOOLS}</div>
+        </Case>
+        <Case label="A private quote, opened: the routing, the two fees and the points" wide>
+          <QuotePanel quote={PRIVATE_QUOTE} from={ETH} to={USDT} loading={false} stale={false} held startOpen routing={routingNote("basic", PRIVATE_QUOTE)} impactConfirmed={false} onConfirmImpact={never} />
+        </Case>
+        <Case label="A private quote: one line, with its points" wide>
+          <QuotePanel quote={PRIVATE_QUOTE} from={ETH} to={USDT} loading={false} stale={false} held routing={routingNote("basic", PRIVATE_QUOTE)} impactConfirmed={false} onConfirmImpact={never} />
+        </Case>
+        <Case label="A private quote where SaplingDex is set to take a fee, opened: the fee row gives it in figures, and the points are the same" wide>
+          <QuotePanel quote={FEE_QUOTE} from={ETH} to={USDT} loading={false} stale={false} held startOpen routing={routingNote("basic", FEE_QUOTE)} impactConfirmed={false} onConfirmImpact={never} />
+        </Case>
+        <Case label="A public quote by the person's own choice, opened" wide>
+          <QuotePanel quote={QUOTE} from={ETH} to={USDT} loading={false} stale={false} held startOpen routing={routingNote("basic", QUOTE, true)} impactConfirmed={false} onConfirmImpact={never} />
+        </Case>
+        <Case label="Private routing could not be had: the card's message and its button">
+          <p className="card-message" role="status">
+            {PRIVATE_UNAVAILABLE}
+          </p>
+          <PrimaryButton>{NOT_AVAILABLE.label}</PrimaryButton>
+        </Case>
+        <Case label="The review's first words for a private swap">
+          <p className="review-sentence">{reviewSentence(ETH, USDT, BigInt(PRIVATE_QUOTE.amountIn), BigInt(PRIVATE_QUOTE.amountOut), { privately: true })}</p>
+        </Case>
+        <Case label="The review's routing row: private, and public by choice">
+          {[routingNote("basic", PRIVATE_QUOTE), routingNote("basic", QUOTE, true)].map((note) =>
+            note === null ? null : (
+              <dl key={note.text} className="review-rows">
+                <div className="review-row" data-row="routing">
+                  <dt className="muted">Routing</dt>
+                  <dd>
+                    {note.private ? (
+                      <span className="chip routing-tag" data-tone="private">
+                        {note.text}
+                      </span>
+                    ) : (
+                      note.text
+                    )}
+                  </dd>
+                </div>
+              </dl>
+            ),
+          )}
+        </Case>
+      </Group>
+
+      <Group title="Whole-page messages">
+        {(
+          [
+            ["Couldn't load coins.", "The list of coins didn't arrive. Check your connection and try again.", "Try again"],
+            ["Can't reach the service.", "Check your connection, then try again.", "Try again"],
+            ["Swaps are paused.", "New swaps can't be started right now. Orders already made are still tracked, and refunds still reach their refund address.", "Check again"],
+            ["Not available in your region.", "SaplingDex can't be used from where you are.", null],
+            ["Page not found.", "There is nothing at this address.", "Go to the swap page"],
+            ["Order not found.", "This link doesn't match an order. An order that was never paid is removed a day after its deadline.", "Go to the swap page"],
+          ] as const
+        ).map(([title, body, action]) => (
+          <Case key={title} label={title}>
+            <Notice title={title} action={action !== null ? <SecondaryButton>{action}</SecondaryButton> : undefined}>
+              <p>{body}</p>
+            </Notice>
+          </Case>
+        ))}
+      </Group>
+
+      <Group title="Orders">
+        {ORDERS.map(({ label, order: example, reconnecting, privacyMode }) => (
+          <Case key={label} label={label} wide>
+            <OrderContent order={example} now={NOW} reconnecting={reconnecting ?? false} contact="help@example.org" onOrder={never} privacyMode={privacyMode ?? null} />
+          </Case>
+        ))}
+      </Group>
+
+      <Group title="Orders with gas">
+        {GAS_ORDERS.map(({ label, order: example, gone }) => (
+          <Case key={label} label={label} wide>
+            <OrderContent order={example} now={NOW} reconnecting={false} contact="help@example.org" onOrder={never} privacyMode="basic" gone={gone ?? false} />
+          </Case>
+        ))}
+        <Case label="Made in Ghost mode, a fresh load after the swap's record is deleted: the notice, and beneath it the gas order still waiting" wide>
+          <OrderDeleted ended="delivered" />
+          <GasAlone gas={{ made: true, order: gasOrder({ ghost: true }) }} now={NOW} reconnecting={false} contact="help@example.org" onGas={never} />
+        </Case>
+        <Case label="The same once the gas order has finished too" wide>
+          <OrderDeleted ended="delivered" />
+          <GasAlone gas={{ made: true, order: null, ended: "delivered" }} now={NOW} reconnecting={false} contact="help@example.org" onGas={never} />
+        </Case>
+      </Group>
+
+      <Group title="Recent orders">
+        <Case label="Orders made in this browser, newest first" wide>
+          <RecentList orders={RECENT} onOpen={never} onClear={never} />
+        </Case>
+        <Case label="None yet" wide>
+          <RecentList orders={[]} onOpen={never} onClear={never} />
+        </Case>
+      </Group>
+
+      <Group title="Paying an order">
+        <Case label="Sending it yourself: the box ticked, address and QR code on show" wide>
+          <DepositDetails order={order()} now={NOW} ticked />
+        </Case>
+        <Case label="Sending it yourself, with a memo" wide>
+          <DepositDetails order={ORDERS[1]!.order} now={NOW} ticked />
+        </Case>
+      </Group>
+
+      <Group title="Messages">
+        <Case label="Warning and danger notices">
+          <p className="notice notice-warning" role="note">
+            <TriangleAlert size={16} strokeWidth={1.5} aria-hidden="true" />
+            <span>The price moved. No order was made. Check the new numbers and confirm again.</span>
+          </p>
+          <div className="notice notice-danger" role="note">
+            <TriangleAlert size={16} strokeWidth={1.5} aria-hidden="true" />
+            <div>
+              <p>Price impact is 13.50%. You would lose a large part of the value of what you pay.</p>
+            </div>
+          </div>
+        </Case>
+        <Case label="Banners">
+          <div className="banner states-banner">
+            <p>Swaps are paused. Existing orders are still tracked.</p>
+          </div>
+          <div className="banner states-banner">
+            <p>The swap service is slow right now. Quotes may take longer than usual.</p>
+          </div>
+          <div className="banner states-banner">
+            <p>Practice mode. Nothing here is a real swap and no address shown can receive funds.</p>
+          </div>
+        </Case>
+        <Case label="The icon links, each with an address (one with none is not drawn)">
+          <ul className="social">
+            {socialLinks({ githubUrl: "https://github.com/example", xUrl: "https://x.com/example" }).map((link) => (
+              <li key={link.key}>
+                <a className="social-link" href={link.href} target="_blank" rel="noopener noreferrer" aria-label={link.label}>
+                  {SOCIAL_MARKS[link.key]}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </Case>
+        <Case label="Toast">
+          <div className="toast states-toast">Copied</div>
+        </Case>
+        <Case label="Skeletons">
+          <div className="states-row">
+            <span className="skeleton skeleton-amount states-skeleton" />
+            <span className="skeleton skeleton-value" />
+            <span className="skeleton skeleton-coin" />
+          </div>
+        </Case>
+      </Group>
+    </main>
+  );
+}

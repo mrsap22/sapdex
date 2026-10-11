@@ -1,0 +1,20 @@
+{
+  "name": "SaplingDex",
+  "short_name": "SaplingDex",
+  "start_url": "/",
+  "display": "browser",
+  "theme_color": "#0e1338",
+  "background_color": "#0e1338",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

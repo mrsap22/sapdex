@@ -1,0 +1,35 @@
+/* Figtree (the text), Instrument Serif Italic (the headlines) and DM Mono (numbers, amounts and
+   addresses). All are served by the site itself, cut down to the Latin characters. SIL Open Font
+   License 1.1: see assets/fonts/OFL.txt. */
+
+@font-face {
+  font-family: "Figtree";
+  src: url("../assets/fonts/figtree-latin.woff2") format("woff2");
+  font-weight: 300 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Instrument Serif";
+  src: url("../assets/fonts/instrument-serif-italic-latin.woff2") format("woff2");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "DM Mono";
+  src: url("../assets/fonts/dm-mono-latin-400.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "DM Mono";
+  src: url("../assets/fonts/dm-mono-latin-500.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
