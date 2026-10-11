@@ -1216,6 +1216,23 @@ describe("the payout tools", () => {
     const notFromReserve = "it took nothing of the reward coin out of the reserve wallet";
     const unreadable = "Solana's answer could not be read";
 
+    it("free what was owed once it is recorded as sent: only payouts still to be sent are held back from a later week's pool", async () => {
+      const rewards = seeded();
+      rewards.recordDelivered(stored({ id: "D".repeat(27), finishedAt: new Date(end + 3_600_000).toISOString() }));
+      const rpc = chain(3n * ONE);
+      // Week 41 is closed with 3: Alice is due 1 and Bob 2. Alice is paid, and it is recorded.
+      await run(rewards, 3n * ONE, { close: true, rpc });
+      await record(rewards, rpc, [pay(rpc, "alice", ALICE.address, ONE)]);
+      const next = { week: "2026-W42", now: end + WEEK_MS, rpc };
+      // The wallet now holds 2, and those are Bob's: nothing is free.
+      rpc.solHeld.set(`${MINT}:${RESERVE}`, [2n * ONE]);
+      await expect(run(rewards, ONE, { close: true, ...next })).rejects.toThrow(/holds 0 that is not already owed to earlier weeks \(2 is\)/);
+      // One more arrives: it is free, because Alice's 1 is no longer counted as owed.
+      rpc.solHeld.set(`${MINT}:${RESERVE}`, [3n * ONE]);
+      expect(await run(rewards, ONE, next)).toMatchObject({ closed: false, reserveHolds: ONE });
+      expect(await run(rewards, ONE, { close: true, ...next })).toMatchObject({ closed: true, reserveHolds: ONE });
+    });
+
     it("check on Solana that a transaction went through for good and took the reward coin out of the reserve wallet, and read what each wallet gained by it", async () => {
       const rpc = chain();
       const good = pay(rpc, "good", ALICE.address, ONE);

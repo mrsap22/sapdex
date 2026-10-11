@@ -90,7 +90,7 @@ export async function privateWalk(browser: Browser, options: { privateUrl: strin
       say(headline === `${POSITIONING.private.headline.plain} ${POSITIONING.private.headline.accent}`, `the headline reads "${headline}"`);
       say((await page.title()) === POSITIONING.private.title, `the page's title is "${await page.title()}"`);
       await shoot("hero");
-      say((await page.locator(".stage-tab-title").first().innerText()).trim() === "Private cross-chain swaps", `the stage's first item is "${(await page.locator(".stage-tab-title").first().innerText()).trim()}"`);
+      say((await page.locator(".stage-tab-title").first().innerText()).trim() === "Private swaps, in and out of ZEC", `the stage's first item is "${(await page.locator(".stage-tab-title").first().innerText()).trim()}"`);
       const section = page.locator("section", { has: page.getByRole("heading", { name: "What private means here" }) }).first();
       await section.scrollIntoViewIfNeeded();
       await page.waitForTimeout(900);

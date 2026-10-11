@@ -190,11 +190,11 @@ export async function siteWalk(browser: Browser, options: { baseUrl: string; pra
     const stage = desk.locator(".stage");
     await stage.scrollIntoViewIfNeeded();
     const tabs = stage.getByRole("tab");
-    expectThat(JSON.stringify(await stage.locator(".stage-tab-title").allInnerTexts()) === JSON.stringify(["Cross-chain swaps", "Order tracking and automatic refunds", "Points and weekly rewards", "Ghost mode"]), `the stage's items are ${JSON.stringify(await stage.locator(".stage-tab-title").allInnerTexts())}`);
+    expectThat(JSON.stringify(await stage.locator(".stage-tab-title").allInnerTexts()) === JSON.stringify(["Swaps in and out of ZEC", "Order tracking and automatic refunds", "Points and weekly rewards", "Ghost mode"]), `the stage's items are ${JSON.stringify(await stage.locator(".stage-tab-title").allInnerTexts())}`);
     expectThat((await stage.getByText(/^(Live|Planned|Paused|Soon)$/).count()) === 0, "an item of the stage carries a tag");
     const onShow = async () => (await stage.locator('.stage-panel[data-active] .stage-title').innerText()).trim();
     const selected = async () => tabs.evaluateAll((all) => all.findIndex((tab) => tab.getAttribute("aria-selected") === "true"));
-    expectThat((await onShow()) === "Cross-chain swaps" && (await selected()) === 0, `the stage opens on "${await onShow()}"`);
+    expectThat((await onShow()) === "Swaps in and out of ZEC" && (await selected()) === 0, `the stage opens on "${await onShow()}"`);
     // It moves on by itself after six seconds, and waits while the pointer is over it.
     await desk.mouse.move(0, 0);
     await stage.locator('.stage-panel[data-active] .stage-title', { hasText: "Order tracking and automatic refunds" }).waitFor({ timeout: 9000 }).catch(() => expectThat(false, "the stage did not move on by itself within nine seconds"));
@@ -214,7 +214,7 @@ export async function siteWalk(browser: Browser, options: { baseUrl: string; pra
     expectThat((await onShow()) === "Order tracking and automatic refunds", `after Previous the stage shows "${await onShow()}"`);
     // The arrow keys, on its row of items: right, right, right (round to the first), left (round to the last), Home.
     await tabs.nth(1).focus();
-    for (const [key, title] of [["ArrowRight", "Points and weekly rewards"], ["ArrowRight", "Ghost mode"], ["ArrowRight", "Cross-chain swaps"], ["ArrowLeft", "Ghost mode"], ["Home", "Cross-chain swaps"]] as const) {
+    for (const [key, title] of [["ArrowRight", "Points and weekly rewards"], ["ArrowRight", "Ghost mode"], ["ArrowRight", "Swaps in and out of ZEC"], ["ArrowLeft", "Ghost mode"], ["Home", "Swaps in and out of ZEC"]] as const) {
       await desk.keyboard.press(key);
       await desk.waitForTimeout(700);
       expectThat((await onShow()) === title, `after ${key} the stage shows "${await onShow()}", not "${title}"`);
@@ -223,7 +223,7 @@ export async function siteWalk(browser: Browser, options: { baseUrl: string; pra
     // Only the item on show can be reached; the others are out of the way of the keyboard and of a screen reader.
     expectThat((await stage.locator(".stage-panel:not([data-active])").evaluateAll((panels) => panels.filter((panel) => !(panel as HTMLElement).inert).length)) === 0, "an item of the stage that is not on show can still be reached");
     await shot(desk, "site-stage-1366-dark");
-    expectThat((await desk.getByRole("heading", { name: "The $SAPDEX token" }).count()) === 0, "the token section is shown although no token address is set");
+    expectThat((await desk.getByRole("heading", { name: "The $SAPDEX coin" }).count()) === 0, "the coin's section is shown although the coin has no address set");
 
     // How it works: each step comes into view as it is reached, and the drawing lights part by part.
     const diagram = desk.locator(".diagram");

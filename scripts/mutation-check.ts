@@ -508,9 +508,9 @@ const M: Mutation[] = [
   { file: "web/index.html", find: "          if (sessionStorage.getItem(\"ghost\") === \"on\") {", replace: "          if (sessionStorage.getItem(\"ghost\") !== \"off\") {", label: "Ghost mode: the page's first script writes nothing for a tab that is not in the mode" },
   { file: "web/index.html", find: "connect-src 'self'; media-src", replace: "connect-src 'self' https://api.web3modal.org; media-src", label: "Ghost mode: the page's first script writes the same policy as the store" },
   { file: "web/index.html", find: "            document.documentElement.dataset.ghost = \"on\";\n", replace: "", label: "Ghost mode: the page's first script gives the page its cast" },
-  { file: "web/src/styles/tokens.css", find: "  --accent: #c9c2b4;", replace: "  --accent: #f0a54a;", label: "Ghost mode: the accent is toned down in the dark theme" },
-  { file: "web/src/styles/tokens.css", find: "  --accent: #5a5346;", replace: "  --accent: #a59e90;", label: "Ghost mode: the toned accent is readable in the light theme" },
-  { file: "web/src/styles/tokens.css", find: "  --focus-ring: #c9c2b4;", replace: "  --focus-ring: #f0a54a;", label: "Ghost mode: the keyboard's mark is toned down with the accent" },
+  { file: "web/src/styles/tokens.css", find: "  --accent: #c3c8de;", replace: "  --accent: #e9ecf6;", label: "Ghost mode: the ink of the main action is thinned in the dark theme" },
+  { file: "web/src/styles/tokens.css", find: "  --accent: #3f4675;", replace: "  --accent: #9aa4cc;", label: "Ghost mode: the thinned ink is readable in the light theme" },
+  { file: "web/src/styles/tokens.css", find: "  --focus-ring: #b9bcc9;", replace: "  --focus-ring: #e6b450;", label: "Ghost mode: the keyboard's mark gives up its gold in the dark theme" },
   { file: "web/src/styles/ghost.css", find: ".ghost-switch {\n  display: none;", replace: ".ghost-switch {\n  display: inline-flex;", label: "Ghost mode: on a phone the switch is in the menu, not the header" },
   { file: "web/src/styles/ghost.css", find: "  .ghost-dock[data-fresh]::before,\n  .ghost-dock[data-fresh] > .ghost-pill,\n  .card-ghost[data-fresh] {\n    animation: none;\n  }", replace: "", label: "Ghost mode: its marks stand still where less movement is asked for" },
   // ---- Ghost mode: what the server keeps of an order made in it, and when the record goes ----
@@ -916,13 +916,13 @@ const M: Mutation[] = [
   { file: "shared/positioning.ts", find: "is not affiliated with or endorsed by Sapling, the Zcash Foundation,", replace: "is not affiliated with or endorsed by the Zcash Foundation,", label: "the site says in so many words that it is not affiliated with Sapling" },
   { file: "shared/positioning.ts", find: "\"SaplingDex is an independent project and is not affiliated with", replace: "\"SaplingDex is not affiliated with", label: "the site says it is independent" },
   // ---- look and words: the dark start, the flat card, the icon links, the coin picker's order ----
-  { file: "web/index.html", find: "        document.documentElement.dataset.theme = \"dark\";", replace: "        document.documentElement.dataset.theme = \"light\";", label: "every visit starts in the dark theme" },
-  { file: "web/src/theme.ts", find: "  return document.documentElement.dataset.theme === \"light\" ? \"light\" : \"dark\";", replace: "  return document.documentElement.dataset.theme === \"dark\" ? \"dark\" : \"light\";", label: "a page that names no theme is in the dark one" },
-  { file: "web/src/styles/tokens.css", find: ":root,\n:root[data-theme=\"dark\"] {", replace: ":root[data-theme=\"dark\"] {", label: "the dark theme's colours are in force where no theme is named" },
-  { file: "web/src/styles/tokens.css", find: "  --focus-ring: #f0a54a;", replace: "  --focus-ring: #e7edf6;", label: "the keyboard's mark is the accent colour in the dark theme" },
-  { file: "web/src/styles/tokens.css", find: "  --focus-ring: #8a4b00;", replace: "  --focus-ring: #13234a;", label: "the keyboard's mark is the accent colour in the light theme" },
+  { file: "web/index.html", find: "        document.documentElement.dataset.theme = \"light\";", replace: "        document.documentElement.dataset.theme = \"dark\";", label: "every visit starts in the light theme" },
+  { file: "web/src/theme.ts", find: "  return document.documentElement.dataset.theme === \"dark\" ? \"dark\" : \"light\";", replace: "  return document.documentElement.dataset.theme === \"light\" ? \"light\" : \"dark\";", label: "a page that names no theme is in the light one" },
+  { file: "web/src/styles/tokens.css", find: ":root,\n:root[data-theme=\"light\"] {", replace: ":root[data-theme=\"light\"] {", label: "the light theme's colours are in force where no theme is named" },
+  { file: "web/src/styles/tokens.css", find: "  --focus-ring: #e6b450;", replace: "  --focus-ring: #e9ecf6;", label: "the keyboard's mark is gold in the dark theme" },
+  { file: "web/src/styles/tokens.css", find: "  --focus-ring: #825400;", replace: "  --focus-ring: #141a55;", label: "the keyboard's mark is gold in the light theme" },
   { file: "web/src/styles/tokens.css", find: "  --tint-accent: rgba(255, 255, 255, 0.06);", replace: "  --tint-accent: rgba(240, 165, 74, 0.1);", label: "Ghost mode: the accent's tint is neutral" },
-  { file: "web/src/styles/tokens.css", find: "  --focus-ring: #5a5346;", replace: "  --focus-ring: #8a4b00;", label: "Ghost mode: the keyboard's mark is toned down in the light theme too" },
+  { file: "web/src/styles/tokens.css", find: "  --focus-ring: #5c5f6e;", replace: "  --focus-ring: #825400;", label: "Ghost mode: the keyboard's mark gives up its gold in the light theme too" },
   { file: "web/src/styles/card.css", find: "  background: var(--card-tint);\n", replace: "  background: var(--card-tint);\n  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);\n", label: "the swap card casts no shadow" },
   { file: "web/src/components/Social.tsx", find: "  if (links.length === 0) return null;\n", replace: "", label: "with no link set there is no row of icons" },
   { file: "web/src/lib/site-logic.ts", find: "  return links.flatMap((link) => (link.href === null ? [] : [{ ...link, href: link.href }]));", replace: "  return links.map((link) => ({ ...link, href: link.href ?? \"#\" }));", label: "an icon whose link is not set is not drawn" },
@@ -944,6 +944,15 @@ const M: Mutation[] = [
   { file: "scripts/check-build.ts", find: "  [/api\\.sapling\\.cash/,", replace: "  [/(?!)/,", label: "the address of Sapling's service anywhere in the build fails it" },
   { file: "scripts/check-build.ts", find: "  [/mainnet-beta\\.solana\\.com|bnbchain\\.org|publicnode\\.com|mainnet\\.base\\.org|arbitrum\\.io\\/rpc|arb1\\.arbitrum\\.io/,", replace: "  [/(?!)/,", label: "the address of a chain's node anywhere in the build fails it" },
   { file: "scripts/check-build.ts", find: "  [/signTransaction|signAndSendTransaction|signAllTransactions|sendTransaction/,", replace: "  [/(?!)/,", label: "a request for a wallet to sign or send a transaction anywhere in the build fails it" },
+  // ---- the chosen look, the pool that is not shared out twice, and a site told only its key ----
+  { file: "server/app.ts", find: "now() - Date.parse(poolSeen.readAt) <= POOL_STALE_MS;", replace: "true;", label: "a pool not read for ten minutes is no figure" },
+  { file: "server/rewards-tools.ts", find: "  const holds = inWallet === null ? null : inWallet > owed ? inWallet - owed : 0n;", replace: "  const holds = inWallet;", label: "what earlier weeks are still owed is not shared out a second time" },
+  { file: "server/rewards-tools.ts", find: "(BigInt(share.payout) > 0n && share.tx === undefined ? sum + BigInt(share.payout) : sum)", replace: "(BigInt(share.payout) > 0n ? sum + BigInt(share.payout) : sum)", label: "a payout already sent is no longer owed" },
+  { file: "web/src/styles/controls.css", find: "  background: var(--accent);\n  color: var(--on-accent);\n  font-size: var(--text-16);", replace: "  background: var(--gold);\n  color: var(--on-accent);\n  font-size: var(--text-16);", label: "the main action is the ink, never gold" },
+  { file: "web/src/styles/home.css", find: ".figure-warm {\n  color: var(--gold);", replace: ".figure-warm {\n  color: var(--text);", label: "the pool's number on the home page is gold" },
+  { file: "web/src/styles/tokens.css", find: "  --coin-badge-radius: 0px;", replace: "  --coin-badge-radius: 4px;", label: "no corner is rounded but a switch's" },
+  { file: "server/boot.ts", find: "    tokenPage: shown.tokenAddress !== null,", replace: "    tokenPage: true,", label: "a site with no coin has no page for one" },
+  { file: "server/boot.ts", find: "    shown.tokenAddress === null\n      ? null\n      :", replace: "    false\n      ? null\n      :", label: "a site with no coin asks Sapling nothing" },
 ];
 
 const args = process.argv.slice(2);

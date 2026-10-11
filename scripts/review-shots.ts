@@ -314,7 +314,7 @@ const SCENARIOS: Scenario[] = [
       // The stage says what the site does. Nothing on it is tagged live, planned or paused.
       if ((await page.locator(".stage-tag").count()) !== 0) throw new Error("the stage still carries tags");
       const first = (await page.locator(".stage-tab-title").first().innerText()).trim();
-      if (first !== "Cross-chain swaps") throw new Error(`the stage's first item reads "${first}"`);
+      if (first !== "Swaps in and out of ZEC") throw new Error(`the stage's first item reads "${first}"`);
     },
   },
   {
