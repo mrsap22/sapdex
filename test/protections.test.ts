@@ -12,6 +12,7 @@ import { holdableKey } from "../server/rewards.ts";
 import { checkPayoutTx, rewardTokenDecimals } from "../server/rewards-tools.ts";
 import { feeSplit } from "../server/sapling.ts";
 import { checkAddress, isValidTxHash, zcashKind } from "../shared/addresses.ts";
+import { WALLET_CHAIN_NODE } from "../shared/chains.ts";
 import { useRewards } from "../web/src/stores/rewards.ts";
 import { createFakeRpc } from "./helpers.ts";
 
@@ -155,6 +156,18 @@ describe("what Solana says of a coin and of a payout is believed only in its pro
       expect(await checkPayoutTx(rpc, RESERVE, written, OTHER_MINT)).toEqual(not);
     }
     expect(rpc.solCalls).toEqual([]);
+  });
+});
+
+describe("where a chain is read when no node is set for it", () => {
+  it("each chain's public node is that chain's own, and no two chains share one", () => {
+    expect(WALLET_CHAIN_NODE).toEqual({
+      bsc: "https://bsc-dataseed.bnbchain.org",
+      eth: "https://ethereum-rpc.publicnode.com",
+      base: "https://mainnet.base.org",
+      arb: "https://arb1.arbitrum.io/rpc",
+    });
+    expect(new Set(Object.values(WALLET_CHAIN_NODE)).size).toBe(Object.keys(WALLET_CHAIN_NODE).length);
   });
 });
 

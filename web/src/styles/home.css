@@ -1104,6 +1104,15 @@ p.token-words:not(:has(a)) {
   visibility: hidden;
 }
 
+/* On a wide screen the swap card stands at the right of the home page, down to the bottom of a
+   laptop's first screen: there Help keeps the other corner, under the headline, where nothing is. */
+@media (min-width: 1024px) {
+  .app[data-page="swap"] .help {
+    right: auto;
+    left: max(var(--space-16), env(safe-area-inset-left));
+  }
+}
+
 @media (hover: hover) {
   .help:hover {
     background: var(--raised);

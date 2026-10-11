@@ -65,9 +65,9 @@
 
   --opacity-disabled: 0.4;
   --opacity-stale: 0.6;
-  /* The text colour at that 60%. Used where only the numbers are to thin out, and the small grey
-     notes beside them must stay readable. */
-  --text-stale: color-mix(in srgb, var(--text) 60%, transparent);
+  /* The text colour thinned nearly as far. Used where only the numbers are to thin out and must
+     still be read (4.5:1 on every surface in both themes), with the small grey notes beside them. */
+  --text-stale: color-mix(in srgb, var(--text) 66%, transparent);
   --opacity-scrim: 0.64;
 
   --layer-base: 0;
@@ -178,7 +178,7 @@
   --diagram-width: 440px;
 
   /* The strip of numbers beside the headline: its height on a narrow screen (two rows) and the room it keeps on a wide one, so that nothing moves as its numbers arrive. */
-  --figures-height: 161px;
+  --figures-height: 185px;
   --figures-row: 93px;
   /* The room kept on the token's page for the sentences about the pool, before they arrive. */
   --token-words-height: 136px;

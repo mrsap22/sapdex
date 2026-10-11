@@ -1150,7 +1150,7 @@ describe("GET /api/orders/:id", () => {
       deposit: { max: 20, windowMs: MINUTE },
       rpc: { max: 60, windowMs: MINUTE },
       rpcGlobal: { max: 1000, windowMs: MINUTE },
-      light: { max: 60, windowMs: MINUTE },
+      light: { max: 120, windowMs: MINUTE },
     });
     // The caps that are not rates.
     expect({ MAX_OPEN_ORDERS, MAX_UNPAID_PER_CLIENT, MAX_UNPAID_PER_NETWORK, MAX_HASH_SUBMISSIONS }).toEqual({ MAX_OPEN_ORDERS: 5000, MAX_UNPAID_PER_CLIENT: 10, MAX_UNPAID_PER_NETWORK: 40, MAX_HASH_SUBMISSIONS: 3 });

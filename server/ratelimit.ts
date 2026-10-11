@@ -174,7 +174,8 @@ export const LIMITS = {
   /** The one question a page may ask of a chain (is this address a contract), per network address and for everyone together. */
   rpc: { max: 60, windowMs: MINUTE },
   rpcGlobal: { max: 1000, windowMs: MINUTE },
-  light: { max: 60, windowMs: MINUTE },
+  /** The small reads a page asks for as it opens (settings, status, the pool, the coin's facts), per IP. One opening asks about six, and one address can be a whole office. */
+  light: { max: 120, windowMs: MINUTE },
 } as const satisfies Record<string, Limit>;
 
 export type LimitName = keyof typeof LIMITS;

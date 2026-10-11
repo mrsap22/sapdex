@@ -127,7 +127,12 @@ export async function ghostWalk(browser: Browser, options: { practiceUrl: string
       // Off again: the page loads itself (which is how the mode's own policy is put down), the pill is gone, the flag is gone, and what was kept before is still there.
       await visit(page, new URL("/", practiceUrl).toString());
       await page.locator("button.ghost-pill").click();
-      await page.waitForFunction("document.documentElement.dataset.ghost !== 'on' && document.querySelector('button.ghost-pill') === null && document.querySelector('meta[http-equiv=\"Content-Security-Policy\"]') === null && document.querySelector('.card') !== null", undefined, { timeout: 20_000 }).catch(() => expectThat(false, "switching the mode off did not bring the ordinary site back"));
+      let back = false;
+      for (let tries = 0; tries < 40 && !back; tries++) {
+        await page.waitForTimeout(500);
+        back = (await page.evaluate(() => document.documentElement.dataset.ghost !== "on" && document.querySelector("button.ghost-pill") === null && document.querySelector('meta[http-equiv="Content-Security-Policy"]') === null && document.querySelector(".card") !== null).catch(() => false)) === true;
+      }
+      expectThat(back, "switching the mode off did not bring the ordinary site back");
       const off = await kept(page);
       expectThat(!off[1].includes(FLAG), "the flag is still kept after the mode was switched off");
       expectThat(before[0].every((key) => off[0].includes(key)), "what the site had kept before the mode is gone after it");

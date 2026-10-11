@@ -105,8 +105,11 @@ touch, pasting an address, focus) does not go as it should.
 
 Add `--practice=http://127.0.0.1:8798` with a second server started with
 `PROVIDER_STUB=true` on that port to include the steps that make an order.
-Those are pretend orders: that server never makes a real one. A name after
-the address runs one scenario or walk alone, for example `quoting`.
+Those are pretend orders: that server never makes a real one. Add
+`--private=http://127.0.0.1:8797` with a third server started with
+`PROVIDER_STUB=true PRIVACY_MODE=basic` to include the walks of private
+routing and of Add gas. A name after the address runs one scenario or walk
+alone, for example `quoting`.
 
 The practice server keeps every limit the real one has, among them thirty
 orders a day from one address. A whole run makes about twenty. Start the
