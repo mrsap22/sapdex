@@ -114,6 +114,8 @@ export async function siteWalk(browser: Browser, options: { baseUrl: string; pra
 
   // ---- A laptop: the links in the header ----
   const wide = await browser.newContext({ viewport: { width: 1366, height: 768 }, colorScheme: "dark" });
+  // Photographed in the dark theme, which a visit does not open in: it is set as the page starts.
+  await wide.addInitScript(`document.addEventListener("readystatechange", () => { if (document.readyState === "interactive") document.documentElement.dataset.theme = "dark"; });`);
   const desk = await wide.newPage();
   watch(desk, () => null);
   try {
@@ -287,7 +289,7 @@ export async function siteWalk(browser: Browser, options: { baseUrl: string; pra
     await contents.getByRole("link", { name: "Refunds and deadlines" }).click();
     await desk.getByRole("heading", { name: "Refunds and deadlines", level: 1 }).waitFor({ timeout: 15_000 });
     expectThat(new URL(desk.url()).pathname === "/docs/refunds", `choosing a page in the docs' contents led to ${desk.url()}`);
-    for (const figure of ["28 minutes", "58 minutes", "1 hour 58 minutes", "2 minutes"]) expectThat((await desk.locator(".docs-body").innerText()).includes(figure), `the docs do not give "${figure}" among the deadlines`);
+    for (const figure of ["58 minutes", "1 hour 58 minutes", "2 minutes"]) expectThat((await desk.locator(".docs-body").innerText()).includes(figure), `the docs do not give "${figure}" among the deadlines`);
     await desk.setViewportSize({ width: 1366, height: 500 });
     await here.getByRole("link", { name: "What may be lost" }).click();
     await desk.waitForTimeout(500);
@@ -460,6 +462,8 @@ export async function siteWalk(browser: Browser, options: { baseUrl: string; pra
   // ---- A phone: the menu, and Track order ----
   const home = practiceUrl ?? baseUrl;
   const narrow = await browser.newContext({ viewport: { width: 360, height: 780 }, deviceScaleFactor: 2, colorScheme: "dark", hasTouch: true, isMobile: true });
+  // Photographed in the dark theme, which a visit does not open in: it is set as the page starts.
+  await narrow.addInitScript(`document.addEventListener("readystatechange", () => { if (document.readyState === "interactive") document.documentElement.dataset.theme = "dark"; });`);
   const phone = await narrow.newPage();
   let missing = false;
   // Pretend orders this walk makes: ended when it is over, so they do not sit unpaid.

@@ -343,7 +343,8 @@ export async function pickerWalk(browser: Browser, options: { baseUrl: string; o
       const usdc = now.rows[stable];
       const usdcListed = ownCoins.find((token) => token.symbol === "USDC");
       expectThat(usdc !== undefined && usdcListed?.contract !== null && usdc.contract === `${usdcListed?.contract?.slice(0, 4)}…${usdcListed?.contract?.slice(-4)}` && usdc.link === `https://basescan.org/token/${usdcListed?.contract}`, `USDC's row shows ${JSON.stringify(usdc)}`);
-      expectThat(now.rows[0]?.chosen === true && /Chosen/.test(now.rows[0]?.end ?? ""), "the coin in use on this side is not marked as chosen");
+      const inUse = now.rows.filter((row) => row.chosen);
+      expectThat(inUse.length === 1 && paying.startsWith(`You pay: ${inUse[0]?.symbol} on `) && /Chosen/.test(inUse[0]?.end ?? ""), `the coin in use on this side is not the one marked as chosen (${JSON.stringify(inUse.map((row) => row.symbol))})`);
       expectThat((now.coins?.all ?? 0) > (now.coins?.h ?? 0), "the list of coins does not scroll inside its own area");
       await page.screenshot({ path: path.join(out, `picker-walk-open-1280-${theme}.png`) });
       shots += 1;
@@ -362,9 +363,10 @@ export async function pickerWalk(browser: Browser, options: { baseUrl: string; o
       now = await state(page);
       expectThat(now.listName === "Coins on Solana" && now.tiles.find((item) => item.name === "Solana")?.chosen === true, `Enter in the chain search did not choose Solana (the list is "${now.listName}")`);
       expectThat(now.rows.length === on("sol").length && now.rows[0]?.symbol === "SOL", `with Solana chosen the list shows ${now.rows.length} coins, starting with ${now.rows[0]?.symbol}`);
-      // A token on a chain whose explorer the site has no address page for: its contract, and no link.
+      // A token on Solana: its mint in short, and a link to its page on Solana's explorer.
       const tether = now.rows.find((row) => row.symbol === "USDT");
-      expectThat(tether !== undefined && tether.contract !== null && tether.link === null, `USDT on Solana shows ${JSON.stringify(tether)}`);
+      const tetherListed = on("sol").find((token) => token.symbol === "USDT");
+      expectThat(tether !== undefined && tether.contract !== null && tetherListed?.contract !== null && tether.link === `https://solscan.io/token/${tetherListed?.contract}`, `USDT on Solana shows ${JSON.stringify(tether)}`);
       await chainSearch(page).fill("");
       now = await state(page);
       expectThat(now.tiles.length === chainCount && now.tiles.filter((item) => item.chosen).map((item) => item.name).join() === "Solana", "clearing the chain search did not bring every chain back with Solana still chosen");
@@ -531,7 +533,7 @@ export async function pickerWalk(browser: Browser, options: { baseUrl: string; o
       await coinSearch(page).fill("usdt");
       now = await state(page);
       // Each of them names its chain beside its symbol.
-      expectThat(now.heading === "On other chains" && now.listName === "On other chains" && now.rows.length >= 3 && now.rows.every((row) => /^[^·]*usdt[^·]* · \S/i.test(row.symbol)) && now.rows[0]?.symbol === "USDT · BNB Chain", `searching Bitcoin's coins for "usdt" shows ${JSON.stringify({ heading: now.heading, rows: now.rows.map((row) => row.symbol) })}`);
+      expectThat(now.heading === "On other chains" && now.listName === "On other chains" && now.rows.length >= 3 && now.rows.every((row) => /^[^·]*usdt[^·]* · \S/i.test(row.symbol)) && now.rows[0]?.symbol === "USDT · Solana", `searching Bitcoin's coins for "usdt" shows ${JSON.stringify({ heading: now.heading, rows: now.rows.map((row) => row.symbol) })}`);
       await page.screenshot({ path: path.join(out, `picker-walk-other-chains-1280-${theme}.png`) });
       shots += 1;
       await coinSearch(page).fill("zzzz");

@@ -216,8 +216,10 @@ const network: typeof fetch = async (input) => {
   if (String(input).includes("/v0/tokens")) return new Response(JSON.stringify(FIXTURE_TOKENS));
   throw new Error("unreachable in tests");
 };
+/** A disk with room on it, whatever the machine the tests run on has left: a nearly full one would refuse every order. */
+const ROOMY_DISK = () => ({ blocks: 1_000_000, bavail: 900_000 });
 function started(dir: string, env: Record<string, string>, now: () => number, lines: string[] = []): Booted {
-  const booted = boot({ env: { DATA_DIR: dir, ...env }, log: createLogger((line) => lines.push(line)), fetchImpl: network, siteDir: path.join(dir, "no-site"), now });
+  const booted = boot({ env: { DATA_DIR: dir, ...env }, log: createLogger((line) => lines.push(line)), fetchImpl: network, siteDir: path.join(dir, "no-site"), now, statfs: ROOMY_DISK });
   running.push(booted);
   return booted;
 }

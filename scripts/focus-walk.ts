@@ -33,17 +33,20 @@ const SWEEP = `(() => {
   const found = [];
   let looked = 0;
   for (const el of document.querySelectorAll('a[href], a[role="link"], button:not(:disabled), input:not(:disabled), textarea, select, summary, [tabindex]')) {
-    if (el.closest("w3m-modal") !== null || el.offsetParent === null) continue;
+    if (el.offsetParent === null) continue;
+    // What already has an edge in the accent colour while at rest (a chosen chip, a ticked box) has it for what it is, not for the focus.
+    const group = [el, el.closest(".field"), el.closest(".picker-search"), el.closest(".picker-row"), el.closest(".address-field")];
+    const atRest = group.map((node) => node !== null && parseFloat(getComputedStyle(node).borderTopWidth) > 0 && getComputedStyle(node).borderTopColor === accent);
     el.focus({ preventScroll: true });
     if (document.activeElement !== el) continue;
     looked += 1;
-    for (const node of [el, el.closest(".field"), el.closest(".picker-search"), el.closest(".picker-row"), el.closest(".address-field")]) {
+    for (const [at, node] of group.entries()) {
       if (node === null) continue;
       const style = getComputedStyle(node);
       const what = (node.className && String(node.className).split(" ")[0]) || node.tagName.toLowerCase();
       if (style.outlineStyle !== "none" && parseFloat(style.outlineWidth) > 0 && !/rgba\\(\\d+, \\d+, \\d+, 0\\)|transparent/.test(style.outlineColor)) found.push(what + ": an outline of " + style.outlineWidth + " " + style.outlineColor);
       if (style.boxShadow.includes(accent)) found.push(what + ": an accent-coloured ring");
-      if (node !== el.closest(".ending") && parseFloat(style.borderTopWidth) > 0 && style.borderTopColor === accent) found.push(what + ": an accent-coloured border");
+      if (node !== el.closest(".ending") && !atRest[at] && parseFloat(style.borderTopWidth) > 0 && style.borderTopColor === accent) found.push(what + ": an accent-coloured border");
     }
   }
   if (before instanceof HTMLElement) before.focus({ preventScroll: true }); else if (document.activeElement instanceof HTMLElement) document.activeElement.blur();

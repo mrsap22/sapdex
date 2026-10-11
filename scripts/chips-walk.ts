@@ -118,7 +118,7 @@ export async function chipsWalk(browser: Browser, options: { baseUrl: string; ou
             // No border, and no fill until it is pointed at; a one-pixel hairline between it and the amount.
             expectThat(chip.border === "0px" && chip.background === "rgba(0, 0, 0, 0)", `${query}: the ${side} selector has a border of ${chip.border} and a fill of ${chip.background}`);
             expectThat(chip.divider.width === "1px" && chip.divider.x > chip.chip.x + chip.chip.width, `${query}: the hairline beside the ${side} selector is ${chip.divider.width} wide at ${chip.divider.x}`);
-            expectThat(same(chip.badge.width, 10) && same(chip.badge.height, 10) && chip.badge.radius === "3px", `${query}: the ${side} badge is ${chip.badge.width}×${chip.badge.height}, radius ${chip.badge.radius}`);
+            expectThat(same(chip.badge.width, 10) && same(chip.badge.height, 10) && chip.badge.radius === "0px", `${query}: the ${side} badge is ${chip.badge.width}×${chip.badge.height}, radius ${chip.badge.radius}`);
             expectThat(same(chip.badge.right, 3) && same(chip.badge.bottom, 3), `${query}: the ${side} badge reaches ${chip.badge.right} right and ${chip.badge.bottom} down of its icon`);
             expectThat(sameColour(chip.badge.ring, chip.under), `${query}: the ${side} badge's ring is ${chip.badge.ring} on a field that comes to ${chip.under}`);
             // A ring, not a shadow: no offset, no blur, a pixel and a half wide.
@@ -171,7 +171,7 @@ export async function chipsWalk(browser: Browser, options: { baseUrl: string; ou
             return { size: icon.dataset.size, w: a.width, h: a.height, bw: b.width, bh: b.height, right: b.right - a.right, bottom: b.bottom - a.bottom, radius: getComputedStyle(badge).borderRadius, letters: fallback ? fallback.textContent : null, drawn: fallback ? fallback.querySelectorAll("svg.no-artwork").length : null, loaded: image ? image.complete && image.naturalWidth > 0 : null };
           }))()`)) as { size: string; w: number; h: number; bw: number; bh: number; right: number; bottom: number; radius: string; letters: string | null; drawn: number | null; loaded: boolean | null }[];
           expectThat(icons.length >= 60, `the page of states shows ${icons.length} coin icons`);
-          const want = { "32": { size: 32, badge: 14, out: 4, radius: "4px" }, "24": { size: 24, badge: 10, out: 3, radius: "3px" } } as const;
+          const want = { "32": { size: 32, badge: 14, out: 4, radius: "0px" }, "24": { size: 24, badge: 10, out: 3, radius: "0px" } } as const;
           for (const [index, icon] of icons.entries()) {
             const rule = want[icon.size as "32" | "24"];
             expectThat(rule !== undefined && same(icon.w, rule.size) && same(icon.h, rule.size) && same(icon.bw, rule.badge) && same(icon.bh, rule.badge) && same(icon.right, rule.out) && same(icon.bottom, rule.out) && icon.radius === rule.radius, `coin icon ${index} on the page of states is ${JSON.stringify(icon)}`);

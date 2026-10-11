@@ -844,12 +844,25 @@ const chosen = only.length === 0 ? SCENARIOS : SCENARIOS.filter((scenario) => on
 // layout, first-screen, states-in-use, review, paste, quoting, sheet-touch, focus, picker (also run by its older name, picker-keyboard), slippage, zoom, reduced-motion, chips, site, order, focus-marks, private, rewards, ghost, gas.
 const walks = (name: string) => only.length === 0 || only.includes(name);
 
-// The site limits how often one visitor may load it. This script is one visitor, so it keeps a steady pace.
+// The site limits how often one visitor may load it, and how often one visitor may ask it its small
+// questions (the settings, the week's points, the totals): sixty of those a minute. This script is one
+// visitor, so it keeps a steady pace, and keeps count of the questions each page asks as it opens (the
+// home page asks the most), waiting where another page would take it past what a visitor is allowed.
 let lastVisit = 0;
+const asked: { at: number; questions: number }[] = [];
 async function visit(page: Page, url: string): Promise<void> {
-  const wait = lastVisit + 2300 - Date.now();
-  if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+  const pathname = new URL(url).pathname;
+  const questions = pathname === "/" ? 6 : pathname === "/rewards" || pathname === "/stats" || pathname === "/token" ? 4 : 3;
+  for (;;) {
+    const now = Date.now();
+    while (asked.length > 0 && now - (asked[0]?.at ?? 0) > 62_000) asked.shift();
+    const gap = lastVisit + 2300 - now;
+    const room = asked.reduce((sum, one) => sum + one.questions, 0) + questions <= 48;
+    if (gap <= 0 && room) break;
+    await new Promise((resolve) => setTimeout(resolve, room ? gap : Math.max(500, 62_000 - (now - (asked[0]?.at ?? now)))));
+  }
   lastVisit = Date.now();
+  asked.push({ at: lastVisit, questions });
   await page.goto(url, { waitUntil: "networkidle" });
 }
 
@@ -1212,9 +1225,9 @@ if (walks("first-screen")) {
             await answer.continue();
           });
         }
-        const wait = lastVisit + 2300 - Date.now();
-        if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
-        lastVisit = Date.now();
+        // (Paced like every other visit; the page is then loaded without waiting for the answers that are held back.)
+        await visit(page, "about:blank");
+        asked.push({ at: Date.now(), questions: 6 });
         await page.goto(new URL("/", origin).toString(), { waitUntil: "domcontentloaded" });
         await page.locator(".card-submit .button-primary").waitFor({ timeout: 20_000 });
         // The count of chains comes with the coin list, which the card needs too. The other figures are still held back.
@@ -1239,7 +1252,9 @@ if (walks("first-screen")) {
         await page.waitForLoadState("networkidle");
         await page.waitForTimeout(600);
         const after = await measure();
-        say(JSON.stringify(after) === JSON.stringify(before), `something moved when the strip's figures arrived: before ${JSON.stringify(before)}, after ${JSON.stringify(after)}`);
+        for (const part of Object.keys(before) as (keyof typeof before)[]) {
+          say(JSON.stringify(after[part]) === JSON.stringify(before[part]), `"${part}" moved or changed size when the strip's figures arrived: from ${JSON.stringify(before[part])} to ${JSON.stringify(after[part])}`);
+        }
         // The figures, in their order. Each is read from the site's own data, and one that cannot be read is absent:
         // the pool only where a pool wallet is set, the swaps only where any were delivered. Nothing stands in for one.
         const shown = await labels();
@@ -1259,8 +1274,9 @@ if (walks("first-screen")) {
         say(flat(await page.locator(".footer-own").innerText()) === INDEPENDENCE, `the footer's last line reads "${flat(await page.locator(".footer-own").innerText())}"`);
         say((await page.title()) === words.title, `the page's title is "${await page.title()}"`);
         // The card opens with what most people come to do.
-        say(flat(await page.getByRole("button", { name: /^You pay: / }).getAttribute("aria-label") ?? "").startsWith(`You pay: ${PAYS.symbol} on ${PAYS.chain}`), `the card opens paying with "${await page.getByRole("button", { name: /^You pay: / }).getAttribute("aria-label")}"`);
-        say(flat(await page.getByRole("button", { name: /^You receive: / }).getAttribute("aria-label") ?? "").startsWith(`You receive: ${RECEIVES.symbol} on ${RECEIVES.chain}`), `the card opens receiving "${await page.getByRole("button", { name: /^You receive: / }).getAttribute("aria-label")}"`);
+        const [paying, receiving] = [flat((await page.getByRole("button", { name: /^You pay: / }).textContent()) ?? ""), flat((await page.getByRole("button", { name: /^You receive: / }).textContent()) ?? "")];
+        say(paying.startsWith(`You pay: ${PAYS.symbol} on ${PAYS.chain}`), `the card opens paying with "${paying}"`);
+        say(receiving.startsWith(`You receive: ${RECEIVES.symbol} on ${RECEIVES.chain}`), `the card opens receiving "${receiving}"`);
         say((await page.getByLabel(/Refund address/).count()) === 1 && (await page.getByLabel(/Receiving address/).count()) === 1, "the card does not open with both its address fields");
         // The layout. From 1024 px: on the left the headline, its sentence and, under them, the strip of numbers; on the right the card. Below it: words, card, footnote, numbers.
         const { headline, figures, card, button, under } = after;
@@ -1447,7 +1463,12 @@ if (walks("states-in-use")) {
         await page.waitForTimeout(150);
         const byClick = await markOf();
         if (byClick !== "none") complaints.push(`${label}: ${name} wears "${byClick}" after a click`);
-        if ((await greenOn()) !== "") complaints.push(`${label}: after a click, ${name} has an accent-coloured ${await greenOn()}`);
+        // (A tick-box that the click ticked wears its ticked look, which is not the focus's doing: what counts is what is
+        // there with the focus and gone without it.)
+        const withFocus = await greenOn();
+        await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+        const without = await greenOn();
+        if (withFocus !== "" && withFocus !== without) complaints.push(`${label}: after a click, ${name} has an accent-coloured ${withFocus}`);
         if (name === "quote-line") await control.click();
         // And none after Escape, which gives the keyboard's mark up until Tab or an arrow key is pressed again.
         await control.focus();
@@ -1651,6 +1672,8 @@ if (walks("review")) {
     // on the way back, as a faulty or dishonest server might). Nothing may be paid from here: the
     // sheet says what differs, leaves the page where it is, and offers only to start again.
     const forged = await browser.newContext({ viewport: { width: 360, height: 780 }, deviceScaleFactor: 2, colorScheme: "dark" });
+    // Photographed in the dark theme, which a visit does not open in: it is set as the page starts.
+    await forged.addInitScript(`document.addEventListener("readystatechange", () => { if (document.readyState === "interactive") document.documentElement.dataset.theme = "dark"; });`);
     const page4 = await forged.newPage();
     try {
       await page4.route("**/api/orders", async (route) => {
@@ -1790,6 +1813,8 @@ if (walks("zoom")) {
   ] as const;
   for (const size of SIZES) {
     const context = await browser.newContext({ viewport: { width: size.width, height: size.height }, deviceScaleFactor: 2, colorScheme: "dark" });
+    // These are looked at in the dark theme, which a visit does not open in: it is set as the page starts.
+    await context.addInitScript(`document.addEventListener("readystatechange", () => { if (document.readyState === "interactive") document.documentElement.dataset.theme = "dark"; });`);
     const page = await context.newPage();
     page.on("pageerror", (error) => complaints.push(`${size.label}: page error: ${error.message}`));
     const fits = async (what: string) => {
@@ -1908,6 +1933,7 @@ if (walks("zoom")) {
   // at both; the points label is whole or, where there is no room for it, out of sight (never cut in half).
   for (const wide of [false, true]) {
     const context = await browser.newContext({ viewport: { width: wide ? 1280 : 480, height: 800 }, deviceScaleFactor: 2, colorScheme: "dark" });
+    await context.addInitScript(`document.addEventListener("readystatechange", () => { if (document.readyState === "interactive") document.documentElement.dataset.theme = "dark"; });`);
     const page = await context.newPage();
     page.on("pageerror", (error) => complaints.push(`480 px: page error: ${error.message}`));
     await page.route("**/api/quote", async (route) => {
@@ -1941,9 +1967,10 @@ if (walks("zoom")) {
         };
       });
       if (line.height !== (wide ? 44 : 64)) complaints.push(`${at}: the quote's line is ${line.height} px high`);
-      if (line.chips.length !== 2 || line.chips[0] !== "about 114 min" || !/^\+[\d.,]+ points$/.test(line.chips[1] ?? "")) complaints.push(`${at}: the quote's line carries ${JSON.stringify(line.chips)}`);
+      // (The line carries the time and nothing of points: a swap adds points only where a rewards address is given, in the review.)
+      if (line.chips.length !== 1 || line.chips[0] !== "about 114 min") complaints.push(`${at}: the quote's line carries ${JSON.stringify(line.chips)}`);
       if (line.tones[0] !== "warning") complaints.push(`${at}: a very slow swap's time is not marked as a warning on the quote's line`);
-      if (line.cut || line.seen[0] !== "in" || line.seen[1] === "cut" || (!wide && line.seen[1] !== "in")) complaints.push(`${at}: the quote's line does not hold its rate, its time and its points as it should (${JSON.stringify(line)})`);
+      if (line.cut || line.seen[0] !== "in") complaints.push(`${at}: the quote's line does not hold its rate and its time as it should (${JSON.stringify(line)})`);
       if (wide) {
         await page.locator(".quote").scrollIntoViewIfNeeded();
         await page.screenshot({ path: path.join(out, "quote-slow-1280-dark.png"), fullPage: false });
@@ -1955,7 +1982,7 @@ if (walks("zoom")) {
       await page.getByText("slower than most").waitFor({ timeout: 15_000 });
       await page.waitForTimeout(350);
       const rows = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>(".quote-row")].map((row) => ({ label: (row.querySelector("dt")?.textContent ?? "").trim(), height: Math.round(row.getBoundingClientRect().height) })));
-      if (rows.length !== 6) complaints.push(`480 px: the quote's breakdown has ${rows.length} rows`);
+      if (rows.length !== 5) complaints.push(`480 px: the quote's breakdown has ${rows.length} rows`);
       for (const row of rows) if (row.height > 25) complaints.push(`480 px: the quote's "${row.label}" row is ${row.height} px high: it takes more than one line`);
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
       if (overflow > 0) complaints.push(`480 px: the home page with a very slow swap scrolls sideways by ${overflow}px`);
@@ -2090,7 +2117,7 @@ if (walks("quoting")) {
     await page.waitForTimeout(1200);
     expectThat(times.length === 0, `asked for a quote with no amount entered (${times.length} requests)`);
     // Five keystrokes in quick succession: one request, and only after the typing has stopped.
-    await page.locator("#amount-in").pressSequentially("0.123", { delay: 60 });
+    await page.locator("#amount-in").pressSequentially("25.12", { delay: 60 });
     // The last key went down one pause (60 ms) before this line is reached.
     const stopped = Date.now() - 60;
     await quoted(page);
@@ -2143,7 +2170,7 @@ if (walks("quoting")) {
     await answered();
     // What a screen reader is told: once for the new inputs, not again for each refresh.
     const spoken = await page.locator('.card-swap > [role="status"].sr-only').innerText();
-    expectThat(/^You receive about [\d.,]+ USDT on Solana\.$/.test(spoken), `the quote was not read out as expected ("${spoken}")`);
+    expectThat(/^You receive about [\d.,]+ ZEC on Solana\.$/.test(spoken), `the quote was not read out as expected ("${spoken}")`);
     expectThat((await page.locator("#amount-out").getAttribute("aria-live")) === "off", "the refreshing number is itself read out on every change");
   } catch (error) {
     complaints.push(`${label}: ${(error as Error).message.split("\n")[0]}`);
