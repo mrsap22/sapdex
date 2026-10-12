@@ -837,7 +837,7 @@ describe("whatever stops the gas order, the swap is made and stands", () => {
 
     // One line says that it was not made, and why in a fixed word: no address, and nothing of the provider's own words.
     expect(logged(h, "gas_not_made")).toEqual([expect.objectContaining({ level: "info", order: hashId(order.id), reason: how.reason })]);
-    expect(Object.keys(logged(h, "gas_not_made")[0]!).sort()).toEqual(["event", "level", "order", "reason", "t"]);
+    expect(Object.keys(logged(h, "gas_not_made")[0]!).sort()).toEqual(["event", "level", "message", "order", "reason", "t"]);
     for (const line of h.logs) for (const value of [...Object.values(WHO), ...Object.values(ELSE), order.id, swap.depositAddress, "too low", "liquidity", "Minimum"]) expect(carries(line, value), `${value} in ${line}`).toBe(false);
     how.after?.(h, order);
 

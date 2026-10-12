@@ -1297,7 +1297,7 @@ describe("no log line and no alert carries an address, a transaction or the ID o
     expect(lines.length).toBeGreaterThanOrEqual(8);
     for (const line of lines) {
       expect(ids.map(hashId), String(line.event)).toContain(line.order);
-      expect(Object.keys(line).filter((key) => !["t", "level", "event", "order", "status"].includes(key)), String(line.event)).toEqual([]);
+      expect(Object.keys(line).filter((key) => !["t", "level", "event", "message", "order", "status"].includes(key)), String(line.event)).toEqual([]);
     }
   });
 

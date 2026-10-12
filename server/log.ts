@@ -16,8 +16,21 @@ export interface Logger {
   error(event: string, fields?: Record<string, unknown>): void;
 }
 
+// Each line also carries the event's name as its `message`. A host's log viewer shows a line of
+// JSON by that field, and searches it: without one the line is listed with nothing in it, and a
+// search for the event finds nothing. The name is all it holds; a field of that name can never
+// replace it.
 function emit(level: string, event: string, fields: Record<string, unknown> | undefined, sink: (line: string) => void): void {
-  sink(JSON.stringify({ t: new Date().toISOString(), level, event, ...fields }));
+  sink(JSON.stringify({ t: new Date().toISOString(), level, event, ...fields, message: event }));
+}
+
+/**
+ * The one plain line said, in words, when a setting stops the start: the setting's name and what
+ * is wrong with it, never its value. For a person reading a host's logs, who should not have to
+ * know that the reason is inside a line of JSON.
+ */
+export function cannotStart(problem: string): string {
+  return `SaplingDex cannot start. ${problem.replace(/\s+/g, " ").trim()}`;
 }
 
 export function createLogger(sink: (line: string) => void = (line) => process.stdout.write(`${line}\n`)): Logger {

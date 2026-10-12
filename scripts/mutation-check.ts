@@ -944,6 +944,10 @@ const M: Mutation[] = [
   { file: "web/src/styles/tokens.css", find: "  --coin-badge-radius: 0px;", replace: "  --coin-badge-radius: 4px;", label: "no corner is rounded but a switch's" },
   { file: "server/boot.ts", find: "    tokenPage: shown.tokenAddress !== null,", replace: "    tokenPage: true,", label: "a site with no coin has no page for one" },
   { file: "server/boot.ts", find: "    shown.tokenAddress === null\n      ? null\n      :", replace: "    false\n      ? null\n      :", label: "a site with no coin asks Sapling nothing" },
+  // ---- a start that is stopped says so in plain words, and every log line can be found by its event ----
+  { file: "server/index.ts", find: "    process.stderr.write(`${cannotStart(problem)}\\n`);\n", replace: "", label: "a setting that stops the start is said in one plain line on the error stream" },
+  { file: "server/log.ts", find: "...fields, message: event }", replace: "...fields }", label: "every log line carries its event's name as its message" },
+  { file: "server/log.ts", find: "{ t: new Date().toISOString(), level, event, ...fields, message: event }", replace: "{ t: new Date().toISOString(), level, event, message: event, ...fields }", label: "no field of a log line can replace its message" },
 ];
 
 const args = process.argv.slice(2);

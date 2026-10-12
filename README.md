@@ -406,6 +406,13 @@ for nothing else. It fetches the coin list and the sanctions list as it starts
 then also downloads the region database (a 60 MB download that unpacks to
 about 130 MB), and until that has loaded every visitor is blocked.
 
+If a deploy keeps restarting, a setting is stopping the start. The server says
+which in one plain line in the deploy logs, for example `SaplingDex cannot
+start. SUPPORT_CONTACT: is required before swaps are switched on`: the
+setting's name and what is wrong with it, never its value. (The same is in the
+log as an event named `config_invalid`. Every log line is one line of JSON
+whose `message` is its event's name, so a host's log viewer shows and finds it.)
+
 Check after the first deploy:
 
 - `https://<domain>/api/status` shows `{"status":"paused",…}`.

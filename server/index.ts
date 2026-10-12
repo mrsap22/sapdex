@@ -3,7 +3,7 @@
 
 import { boot } from "./boot.ts";
 import { ConfigError } from "./config.ts";
-import { createLogger, errorKind } from "./log.ts";
+import { cannotStart, createLogger, errorKind } from "./log.ts";
 
 const log = createLogger();
 
@@ -13,7 +13,10 @@ function main(): void {
     app = boot({ log });
   } catch (err) {
     // The message names the setting and what is wrong with it, never its value.
-    log.error("config_invalid", { problem: err instanceof ConfigError ? err.message : "DATA_DIR: cannot be created or written to" });
+    const problem = err instanceof ConfigError ? err.message : "DATA_DIR: cannot be created or written to";
+    log.error("config_invalid", { problem });
+    // And once in plain words, on the error stream, where a host's log viewer shows it whatever it makes of the line above.
+    process.stderr.write(`${cannotStart(problem)}\n`);
     process.exit(1);
   }
 
