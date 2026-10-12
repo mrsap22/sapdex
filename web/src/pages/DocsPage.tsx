@@ -349,9 +349,6 @@ function Safety() {
             With <AddGasLink /> there are two orders, so you make two transfers: one for the swap, and a second for the gas. Each is a plain transfer of that order's amount to that order's own deposit address.
           </p>
         ) : null}
-        <p>
-          One page speaks to a wallet, and only if you press sign in: on <Link href="/rewards">Rewards</Link>, seeing your own points means signing one plain message with a Solana wallet. It is not a transaction, moves nothing, approves nothing and costs no network fee.
-        </p>
         <Callout tone="warning" title="Anything else is not SaplingDex.">
           <p>If a page in SaplingDex's name asks you to connect a wallet to pay, to approve spending, or to sign a transaction, close it.</p>
         </Callout>
@@ -572,7 +569,7 @@ function GhostMode() {
             <strong>The switch is the one thing remembered.</strong> It is kept as a single on/off flag for this tab, so that loading the page again does not turn Ghost mode off. It ends when the tab is closed.
           </li>
           <li>
-            <strong>Nothing is kept in your browser.</strong> No list of your orders, no copy of the coin list, no note of any kind: only the switch itself. Orders you made earlier, in normal mode, are not shown while Ghost mode is on. They are there again when you turn it off, unless you chose "Also clear what this browser already holds" when you turned it on. The <Link href="/rewards">Rewards</Link> sign-in is off while the mode is on: its code is not fetched at all.
+            <strong>Nothing is kept in your browser.</strong> No list of your orders, no copy of the coin list, no note of any kind: only the switch itself. Orders you made earlier, in normal mode, are not shown while Ghost mode is on. They are there again when you turn it off, unless you chose "Also clear what this browser already holds" when you turned it on.
           </li>
           <li>
             <strong>An order's record is deleted when it finishes.</strong> An order made in Ghost mode is marked as one. The moment it is delivered or refunded its record is deleted from the server. One that was never paid is deleted a day after its deadline, once the server has stopped looking for a late deposit. Until then its own link is the only way back to it: it is on no list, and it is never found from its deposit address. After that the link says only that the order finished, and in one word how: delivered, refunded, or run out.

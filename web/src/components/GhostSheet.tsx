@@ -8,7 +8,7 @@ import { Sheet } from "./Sheet.tsx";
 
 /** What changes while Ghost mode is on, as the person meets it: one plain sentence each. */
 export const GHOST_CHANGES = [
-  { key: "browser", Icon: SaveOff, text: "Nothing is kept in this browser but the switch itself, for this tab only, so that loading the page again does not turn it off. The Rewards sign-in is off." },
+  { key: "browser", Icon: SaveOff, text: "Nothing is kept in this browser but the switch itself, for this tab only, so that loading the page again does not turn it off." },
   { key: "record", Icon: Trash2, text: "An order you make is not listed among recent swaps, and its record is deleted from the server the moment it is delivered or refunded." },
 ] as const;
 

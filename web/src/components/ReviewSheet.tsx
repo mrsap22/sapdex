@@ -21,7 +21,6 @@ import { useTokens } from "../stores/tokens.ts";
 import { Address } from "./Address.tsx";
 import { Said } from "./Amount.tsx";
 import { CoinIcon } from "./CoinIcon.tsx";
-import { AddressField } from "./AddressField.tsx";
 import { PrimaryButton } from "./Button.tsx";
 import { Sheet } from "./Sheet.tsx";
 
@@ -81,7 +80,8 @@ export function ReviewSheet() {
   const [accepted, setAccepted] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   // Where this swap's points go: the Solana address typed here, or nowhere.
-  const [rewardsText, setRewardsText] = useState("");
+  // No rewards address is asked for or sent.
+  const rewardsText = "";
   // True when the numbers were replaced because the route changed, not the price.
   const [rerouted, setRerouted] = useState(false);
   const [now, setNow] = useState(() => Date.now());
@@ -484,13 +484,6 @@ export function ReviewSheet() {
             <Address value={refundTo} />
           </p>
           <p className="review-address-note muted">If the swap fails, your {from.symbol} comes back here.</p>
-        </div>
-
-        <div className="review-address">
-          <p className="review-address-label">
-            Points<span className="muted"> · {chainName(REWARDS.chain)}</span>
-          </p>
-          <AddressField label="Rewards address" hint={ghost ? GHOST_REWARDS_HINT : "Optional. Without one, this swap adds no points."} chain={REWARDS.chain} value={rewardsText} onChange={setRewardsText} />
         </div>
 
         <p className="review-plain muted">

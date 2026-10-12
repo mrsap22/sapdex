@@ -2,7 +2,6 @@ import { ChevronDown } from "lucide-react";
 import { useEffect, useRef, type ReactNode } from "react";
 import { GAS_DOC_SLUG, GHOST_DOC_SLUG, PRIVATE_DOC_SLUG } from "../../../shared/pages.ts";
 import { INDEPENDENCE } from "../../../shared/positioning.ts";
-import { RESERVE_ASSET, REWARDS } from "../../../shared/rewards.ts";
 import { SHIELDED_FAQ, zecShieldedOf, type ZecShielded } from "../../../shared/shielded.ts";
 import { docHref } from "../lib/docs-logic.ts";
 import { isPrivateMode } from "../lib/site-logic.ts";
@@ -129,20 +128,6 @@ const FAQ: readonly Question[] = [
         A switch on the swap card, shown where gas can be added. A new wallet has none of its chain's own coin to pay network fees with, so a coin that arrives there, such as USDC on Solana, cannot be moved. With Add gas on, a second, small order delivers a little of the chain's own coin to the same receiving address, by the same private route as the swap, so the new wallet needs no funding from an old one. There are two payments: one for the swap, and one for the gas. <Link href={docHref(GAS_DOC_SLUG)}>How Add gas works</Link>
       </p>
     ),
-  },
-  {
-    id: "points",
-    question: "What are points?",
-    answer: (_contact, privateRouting) => (
-      <p>
-        Each delivered swap adds points to a rewards address: {REWARDS.pointsPerUsd} for each $1 swapped. A swap that is refunded or fails adds nothing.{privateRouting ? <> A privately routed swap adds points the same way.</> : null} A rewards address is a Solana address. Each week the pool is shared out by points and sent by hand, in {RESERVE_ASSET.symbol} on Solana. Points have no money value, and a payout is at SaplingDex's discretion and can change. <Link href="/docs/rewards">The rules in full</Link>
-      </p>
-    ),
-  },
-  {
-    id: "signature",
-    question: "Why does the Rewards page ask my wallet to sign?",
-    answer: () => <p>To show that a Solana address is yours before its points are shown to you. It is one plain message, not a transaction: it moves nothing, approves nothing and costs no network fee. It is the only thing this site ever asks of a wallet. Paying for a swap never asks for a signature.</p>,
   },
   {
     id: "shielded-zec",

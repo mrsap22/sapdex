@@ -51,7 +51,6 @@ export function matchRoute(pathname: string): Route {
   // A page's own part of the address is one word, or words joined by single hyphens ("ghost-mode").
   const doc = /^\/docs\/([a-z]+(?:-[a-z]+)*)$/.exec(pathname);
   if (doc && isDocSlug(doc[1] ?? "")) return { page: "docs", slug: doc[1] as DocSlug };
-  if (pathname === "/rewards") return { page: "rewards" };
   if (pathname === "/stats") return { page: "stats" };
   if (pathname === "/terms") return { page: "terms" };
   if (pathname === "/privacy") return { page: "privacy" };
@@ -64,7 +63,6 @@ export function matchRoute(pathname: string): Route {
 export const NAV = [
   { href: "/", label: "Swap" },
   { href: "/track", label: "Track order" },
-  { href: "/rewards", label: "Rewards" },
   { href: "/stats", label: "Stats" },
   { href: "/docs", label: "Docs" },
 ] as const;
@@ -80,7 +78,6 @@ export function navFor(pathname: string): (typeof NAV)[number]["href"] | null {
   if (route.page === "swap") return "/";
   if (route.page === "track" || route.page === "order") return "/track";
   if (route.page === "docs") return "/docs";
-  if (route.page === "rewards") return "/rewards";
   if (route.page === "stats") return "/stats";
   return null;
 }

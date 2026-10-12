@@ -14,14 +14,11 @@ import { chainIconUrl } from "../lib/icons.ts";
 import { useCountUp, useSeen } from "../lib/reveal.ts";
 import { chainsOnList, isPrivateMode, listCounts, PRIVATE_MEANS } from "../lib/site-logic.ts";
 import { statsPageOn } from "../lib/stats-logic.ts";
-import { usdMicroText } from "../lib/rewards-logic.ts";
-import { briefPoints, RESERVE_ASSET, type RewardsPublic } from "../../../shared/rewards.ts";
 import { SHIELDED_HOME, zecShieldedOf } from "../../../shared/shielded.ts";
 import { api } from "../api.ts";
 import { useApp } from "../stores/app.ts";
 import { useTokens } from "../stores/tokens.ts";
 import { Address } from "./Address.tsx";
-import { Amount } from "./Amount.tsx";
 import { CopyButton } from "./CopyButton.tsx";
 import { Link } from "./Link.tsx";
 import { Reveal } from "./Reveal.tsx";
@@ -173,27 +170,6 @@ function useSwapsTotal(): number | null {
   return on ? swaps : null;
 }
 
-/**
- * What anyone may see of the rewards: the week's points and the pool. Asked of the server here, by
- * itself: the home page has nothing to do with the Rewards page's sign-in and does not load it.
- * Null until it arrives, and if it does not.
- */
-function useRewardsSummary(): RewardsPublic | null {
-  const [summary, setSummary] = useState<RewardsPublic | null>(null);
-  useEffect(() => {
-    let live = true;
-    api.rewards().then(
-      (answer) => {
-        if (live) setSummary(answer);
-      },
-      () => undefined,
-    );
-    return () => {
-      live = false;
-    };
-  }, []);
-  return summary;
-}
 
 /** One figure of the strip beside the headline: a small label, the number, and at most a quiet note under it. */
 function Figure({ label, note, warm = false, children }: { label: string; note?: ReactNode; warm?: boolean; children: ReactNode }) {
@@ -208,24 +184,15 @@ function Figure({ label, note, warm = false, children }: { label: string; note?:
 
 /**
  * Beside the headline: a strip of plain numbers, each one read from the site's own data and each
- * one checkable (the pool on the Rewards page, with a link to the wallet; the swaps on the Stats
- * page; the chains in the coin picker). A number that has not arrived, or cannot be read, is not
+ * one checkable (the swaps on the Stats page; the chains in the coin picker). A number that has not arrived, or cannot be read, is not
  * there: nothing stands in for it. The strip keeps its height from the first paint, so nothing
  * under it moves as the numbers come in.
  */
 export function HeroFigures() {
-  const summary = useRewardsSummary();
   const counts = useListCounts();
   const swaps = useSwapsTotal();
-  const pool = summary?.pool ?? null;
   return (
     <ul className="figures" aria-label="In numbers">
-      {pool !== null && pool.amount !== null ? (
-        <Figure label="Pool this week" warm note={pool.usdMicro !== null ? <>about {usdMicroText(BigInt(pool.usdMicro))}</> : null}>
-          <Amount raw={pool.amount} decimals={pool.decimals} symbol={RESERVE_ASSET.symbol} />
-        </Figure>
-      ) : null}
-      {summary !== null ? <Figure label="Points this week">{briefPoints(BigInt(summary.weekPointsMicro))}</Figure> : null}
       {swaps !== null && swaps > 0 ? <Figure label="Swaps delivered">{swaps.toLocaleString("en-US")}</Figure> : null}
       {counts !== null ? <Figure label="Chains">{counts.chains}</Figure> : null}
     </ul>
