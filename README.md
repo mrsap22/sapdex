@@ -52,7 +52,7 @@ Rules the code keeps:
 | `npm run check:pages` | Measure the built pages in a real browser: Lighthouse (performance 90 or more, accessibility 100, layout shift 0.05 at most) and the axe accessibility rules for WCAG 2.2 AA The speed score is taken on a pretend phone; on a slower machine (the automatic check's, say) the phone's processor is slowed less, by the measuring tool's own table, so that the same phone is measured everywhere, and a page that falls just short is measured twice more and judged by the middle score. On GitHub's shared machines the speed score and the paint time are printed as warnings and do not fail the run; accessibility and layout shift fail it everywhere |
 | `npm run rewards:export -- --week … --pool … [--close]` | Show what closing a week of points would do. With `--close`, close it and write the list of payouts (sends nothing) |
 | `npm run rewards:record -- --week … --tx <signature>` | Record the transactions that paid a closed week, after checking on Solana what each one paid |
-| `npx tsx scripts/make-brand.ts` | Make every size of the logo, the favicons, the home-screen icons and the web manifest again from the two source files in `web/src/assets/brand/` (only when one of them changes) |
+| `npx tsx scripts/make-brand.ts` | Make the emblem the page uses, the favicons, the home-screen icons and the web manifest again from the one vector in `web/src/assets/brand/` (only when it changes) |
 | `npm run check:logos -- http://127.0.0.1:8799` | Ask a running site for its coin list and fail, naming them, if a listed coin has no logo. Run it after the provider lists new coins. A coin that was looked for and is not in the logo collection is named in the script's own list, and is shown as a plain coin drawing until it has one |
 | `npx tsx scripts/make-coin-icons.ts` | Make the coin and chain icons again from the logo files in `web/src/assets/coins/` and `web/src/assets/chains/` (only when one is added or changed): each becomes a 96 px WebP under `web/public/` |
 | `npx tsx scripts/make-share.ts <url>` | Redraw the image a shared link shows (`web/public/share.png`) from the running site |
@@ -546,8 +546,9 @@ it in lower case.
 
 The fonts are Figtree, Instrument Serif (italic) and DM Mono, each under the
 SIL Open Font License 1.1 and served by the site itself; the licence and each
-font's copyright line are in `web/src/assets/fonts/OFL.txt`. The icon is the
-project's own.
+font's copyright line are in `web/src/assets/fonts/OFL.txt`. The emblem (two
+leaves curving round each other) is the project's own: the photograph it was
+supplied as and the vector traced from it are in `web/src/assets/brand/`.
 
 The X and GitHub icons are from Simple Icons (CC0 1.0). Each mark belongs to its owner and is used only
 to link to the project's page on that service. Other icons are from Lucide (ISC).

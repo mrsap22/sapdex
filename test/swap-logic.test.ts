@@ -1124,7 +1124,7 @@ describe("bundled icons", () => {
     for (const dir of ["coins", "chains", "brand"]) expect(fs.readdirSync(path.resolve("web", "public", dir)).filter((f) => /near/i.test(f)), dir).toEqual(dir === "brand" ? [] : ["near.webp"]);
     expect(fs.readdirSync(path.resolve("web", "public")).filter((f) => /near/i.test(f))).toEqual([]);
     // The page's own parts that carry a brand (the header, the footer, the first screen, the share picture) name neither file.
-    for (const file of [path.join("web", "index.html"), path.join("shared", "brand.ts"), ...["Shell.tsx", "Brand.tsx", "Home.tsx", "Stage.tsx", "Social.tsx"].map((name) => path.join("web", "src", "components", name))]) {
+    for (const file of [path.join("web", "index.html"), ...["Shell.tsx", "Brand.tsx", "Home.tsx", "Stage.tsx", "Social.tsx"].map((name) => path.join("web", "src", "components", name))]) {
       expect(fs.readFileSync(path.resolve(file), "utf8"), file).not.toMatch(/(coins|chains)\/near|near\.(webp|svg|png)/i);
     }
     expect(coinIconUrl("ETH")).toBe("/coins/eth.svg");

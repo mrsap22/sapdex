@@ -108,9 +108,15 @@
 }
 
 /* The mark, where it is drawn (the project's own artwork, once there is some): a picture of its own size, never stretched or squeezed. */
+/* The emblem beside the name: the brand's one shape, filled with the colour of the text. */
 .mark {
   display: block;
   flex: none;
+  width: var(--height-24);
+  height: var(--height-24);
+  background: currentColor;
+  -webkit-mask: url("/brand/emblem.svg") center / contain no-repeat;
+  mask: url("/brand/emblem.svg") center / contain no-repeat;
 }
 
 /* On a phone the header's room goes to the name: the theme is changed from the menu there. */

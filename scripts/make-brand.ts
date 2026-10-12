@@ -1,24 +1,23 @@
-// Makes every size of the project's logo and of the site's icons from the two source files.
-// Run it again when either source file changes; what it writes is committed.
+// Makes the site's emblem and every icon from the one vector.
+// Run it again when the vector changes; what it writes is committed.
 //
 //   npx tsx scripts/make-brand.ts
 //
 // The sources (web/src/assets/brand/) are the supplied artwork and are never changed:
-//   logo-source.png   the mark on a transparent ground, for the site itself
-//   icon-source.png   the mark on its own dark square, for the browser tab and a phone's home screen
+//   emblem-photo.png   the emblem as it was supplied: a photograph of it pressed into paper
+//   emblem.svg         the same emblem as a flat vector in one colour on no ground, traced from the photograph
 //
 // What is written (web/public/):
-//   brand/logo-<height>.webp   the mark at 24, 28 and 32 px high, each at 1x, 2x and 3x, transparency kept
-//   favicon.ico                16, 32 and 48 px in one file
+//   brand/emblem.svg   the vector as the page uses it, beside the name: it takes the colour of the text
+//   favicon.ico        16, 32 and 48 px in one file
 //   favicon-32.png, icon-192.png, icon-512.png, apple-touch-icon.png (180)
-//   site.webmanifest           the name, the two large icons, and the page's colour from the design tokens
-// and shared/brand.ts, which holds the logo's sizes for the page.
+//   site.webmanifest   the name, the two large icons, and the page's colour from the design tokens
 //
-// Nothing is redrawn, recoloured or given an effect. Each picture is only scaled, with the empty
-// ground round the mark trimmed first so that the mark fills the size it is shown at: the
-// transparent margin of the logo, and part of the black margin of the icon (never the mark or the
-// light round it). Uses the Chrome already installed on this machine, for its scaling and its
-// encoders: no other tool is needed.
+// Every icon is the emblem in the ink colour on a square of the paper colour, both read from the
+// design tokens: a browser's tab can be light or dark, and the emblem alone would be lost on one
+// of them. Nothing is redrawn or given an effect. The one thing done for size: at 16 px the thin
+// arcs would be less than a pixel wide, so that one picture is drawn with a hair of outline in the
+// same ink, which keeps them on show. Uses the Chrome already installed on this machine.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -28,117 +27,55 @@ import { chromium } from "playwright-core";
 const SOURCES = path.resolve("web", "src", "assets", "brand");
 const PUBLIC = path.resolve("web", "public");
 
-/** The heights the mark is shown at, in CSS pixels. Each is made at one, two and three device pixels to the pixel. */
-export const LOGO_HEIGHTS = [24, 28, 32] as const;
-const DENSITIES = [1, 2, 3] as const;
-/** How much of the mark's own size is left round it as air, on each side. */
-const LOGO_AIR = 0.02;
-const ICON_AIR = 0.14;
-/** The same for the smallest pictures (a browser tab's 16 px above all), where the mark needs every pixel it can have. */
-const TAB_ICON_AIR = 0.04;
-/** A pixel of the logo counts as part of the mark from this much opacity (of 255). */
-const LOGO_INK = 8;
-/** A pixel of the icon counts as the mark, or the light round it, from this much brightness (of 255). */
-const ICON_LIGHT = 20;
+/** How much of an icon's side is left as ground round the emblem, on each side. */
+export const ICON_AIR = 0.14;
+/** The same for a browser tab's pictures, where the emblem needs every pixel it can have. */
+export const TAB_ICON_AIR = 0.04;
+/** The outline that keeps the thin arcs on show at 16 px, as a share of the emblem's width. At no other size. */
+export const SMALLEST_OUTLINE = 0.015;
 
-interface Box {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
 interface Made {
   name: string;
-  width: number;
-  height: number;
-  base64: string;
+  size: number;
+  png: Buffer;
 }
+
+const emblem = fs.readFileSync(path.join(SOURCES, "emblem.svg"), "utf8");
+const shape = /<path fill="currentColor" d="([^"]+)"\/>/.exec(emblem)?.[1];
+if (shape === undefined || !emblem.startsWith('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">')) throw new Error("make-brand: emblem.svg is not one path in one colour in a square of 100");
+
+// The paper and the ink, from the design tokens (the light theme's, which is the one the site opens in).
+const tokens = fs.readFileSync(path.resolve("web", "src", "styles", "tokens.css"), "utf8");
+const light = /\n:root,\n:root\[data-theme="light"\]\s*\{([\s\S]*?)\n\}/.exec(tokens)?.[1] ?? "";
+const paper = /--bg:\s*(#[0-9a-fA-F]{6});/.exec(light)?.[1];
+const ink = /--text:\s*(#[0-9a-fA-F]{6});/.exec(light)?.[1];
+if (paper === undefined || ink === undefined) throw new Error("make-brand: the paper and ink colours (--bg, --text) are not in the design tokens");
 
 const browser = await chromium.launch({ channel: "chrome", headless: true });
 const page = await (await browser.newContext()).newPage();
 await page.setContent("<!doctype html><title>brand</title>");
 
-const dataUrl = (file: string) => `data:image/png;base64,${fs.readFileSync(path.join(SOURCES, file)).toString("base64")}`;
-
-/** The size of a source picture, and the box round everything in it that is not empty ground. */
-async function measure(file: string, mode: "alpha" | "light", threshold: number): Promise<{ width: number; height: number; box: Box }> {
-  return page.evaluate(
-    async ([url, how, limit]) => {
-      const bitmap = await createImageBitmap(await (await fetch(url as string)).blob());
-      const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
-      const context = canvas.getContext("2d")!;
-      context.drawImage(bitmap, 0, 0);
-      const { data } = context.getImageData(0, 0, bitmap.width, bitmap.height);
-      let left = bitmap.width;
-      let top = bitmap.height;
-      let right = -1;
-      let bottom = -1;
-      for (let y = 0; y < bitmap.height; y++) {
-        for (let x = 0; x < bitmap.width; x++) {
-          const i = (y * bitmap.width + x) * 4;
-          const lit = how === "alpha" ? data[i + 3]! >= (limit as number) : Math.max(data[i]!, data[i + 1]!, data[i + 2]!) >= (limit as number);
-          if (!lit) continue;
-          if (x < left) left = x;
-          if (x > right) right = x;
-          if (y < top) top = y;
-          if (y > bottom) bottom = y;
-        }
-      }
-      return { width: bitmap.width, height: bitmap.height, box: { x: left, y: top, width: right - left + 1, height: bottom - top + 1 } };
-    },
-    [dataUrl(file), mode, threshold] as const,
-  );
-}
-
-/**
- * One part of a source picture, scaled to a size: as a WebP that loses nothing, or (for a PNG) as
- * its plain pixels, four bytes to each, which are then written as a PNG here (see pngOf).
- */
-async function scaled(file: string, crop: Box, width: number, height: number, type: "image/webp" | "image/png", name: string): Promise<Made> {
+/** The emblem in ink on a square of paper, at a size, as its plain pixels. */
+async function icon(size: number, name: string, air: number, outline = 0): Promise<Made> {
   const base64 = await page.evaluate(
-    async ([url, box, w, h, mime]) => {
-      const part = box as { x: number; y: number; width: number; height: number };
-      const blob = await (await fetch(url as string)).blob();
-      const bitmap = await createImageBitmap(blob, part.x, part.y, part.width, part.height, { resizeWidth: w as number, resizeHeight: h as number, resizeQuality: "high" });
-      const canvas = new OffscreenCanvas(w as number, h as number);
+    async ([d, side, margin, ground, colour, stroke]) => {
+      const inner = 100 / (1 - 2 * (margin as number));
+      const start = (inner - 100) / 2;
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${side}" height="${side}" viewBox="${-start} ${-start} ${inner} ${inner}"><rect x="${-start}" y="${-start}" width="${inner}" height="${inner}" fill="${ground}"/><path fill="${colour}" stroke="${colour}" stroke-width="${(stroke as number) * 100}" stroke-linejoin="round" d="${d}"/></svg>`;
+      const picture = new Image();
+      picture.src = `data:image/svg+xml;base64,${btoa(svg)}`;
+      await picture.decode();
+      const canvas = new OffscreenCanvas(side as number, side as number);
       const context = canvas.getContext("2d")!;
-      context.drawImage(bitmap, 0, 0);
-      // Quality 1 makes Chrome write a WebP that loses nothing.
-      const bytes = mime === "image/webp" ? new Uint8Array(await (await canvas.convertToBlob({ type: "image/webp", quality: 1 })).arrayBuffer()) : new Uint8Array(context.getImageData(0, 0, w as number, h as number).data.buffer);
+      context.drawImage(picture, 0, 0);
+      const bytes = new Uint8Array(context.getImageData(0, 0, side as number, side as number).data.buffer);
       let text = "";
       for (let i = 0; i < bytes.length; i += 0x8000) text += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
       return btoa(text);
     },
-    [dataUrl(file), crop, width, height, type] as const,
+    [shape, size, air, paper, ink, outline] as const,
   );
-  if (type === "image/webp") return { name, width, height, base64: withoutProfile(Buffer.from(base64, "base64")).toString("base64") };
-  return { name, width, height, base64: pngOf(Buffer.from(base64, "base64"), width, height).toString("base64") };
-}
-
-/**
- * A WebP without the colour profile Chrome writes into it. The pixels are already in the web's own
- * colour space (the canvas they were drawn on is), which is what a browser takes a picture with no
- * profile to be in: so the profile says nothing, and is a third of a file this small.
- */
-function withoutProfile(webp: Buffer): Buffer {
-  if (webp.toString("latin1", 0, 4) !== "RIFF" || webp.toString("latin1", 8, 12) !== "WEBP") throw new Error("make-brand: not a WebP");
-  const kept: Buffer[] = [];
-  for (let at = 12; at + 8 <= webp.length; ) {
-    const kind = webp.toString("latin1", at, at + 4);
-    const size = webp.readUInt32LE(at + 4);
-    const end = at + 8 + size + (size % 2);
-    const chunk = Buffer.from(webp.subarray(at, end));
-    // The first chunk lists what the file holds: the profile is struck from that list as it is from the file.
-    if (kind === "VP8X") chunk[8] = chunk[8]! & ~0x20;
-    if (kind !== "ICCP") kept.push(chunk);
-    at = end;
-  }
-  const body = Buffer.concat(kept);
-  const head = Buffer.alloc(12);
-  head.write("RIFF", 0, "latin1");
-  head.writeUInt32LE(body.length + 4, 4);
-  head.write("WEBP", 8, "latin1");
-  return Buffer.concat([head, body]);
+  return { name, size, png: pngOf(Buffer.from(base64, "base64"), size, size) };
 }
 
 /**
@@ -207,45 +144,16 @@ function pngOf(rgba: Buffer, width: number, height: number): Buffer {
   return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", head), chunk("IDAT", zlib.deflateSync(Buffer.concat(packed), { level: 9, memLevel: 9 })), chunk("IEND", Buffer.alloc(0))]);
 }
 
-/** A box grown by a share of its own size on every side, kept inside the picture. */
-function withAir(box: Box, air: number, width: number, height: number): Box {
-  const pad = Math.round(Math.max(box.width, box.height) * air);
-  const x = Math.max(0, box.x - pad);
-  const y = Math.max(0, box.y - pad);
-  return { x, y, width: Math.min(width, box.x + box.width + pad) - x, height: Math.min(height, box.y + box.height + pad) - y };
-}
-
-/** The smallest square round a box, with air, centred on it and kept inside the picture. The whole picture when that is smaller. */
-function squareRound(box: Box, air: number, width: number, height: number): Box {
-  const side = Math.min(width, height, Math.round(Math.max(box.width, box.height) * (1 + 2 * air)));
-  const x = Math.min(Math.max(0, Math.round(box.x + box.width / 2 - side / 2)), width - side);
-  const y = Math.min(Math.max(0, Math.round(box.y + box.height / 2 - side / 2)), height - side);
-  return { x, y, width: side, height: side };
-}
-
-// ---- The logo: the mark alone, its transparent margin trimmed ----
-const logo = await measure("logo-source.png", "alpha", LOGO_INK);
-const logoCrop = withAir(logo.box, LOGO_AIR, logo.width, logo.height);
-const heights = [...new Set(LOGO_HEIGHTS.flatMap((height) => DENSITIES.map((density) => height * density)))].sort((a, b) => a - b);
-const widthAt = (height: number) => Math.round((height * logoCrop.width) / logoCrop.height);
-fs.mkdirSync(path.join(PUBLIC, "brand"), { recursive: true });
-const logos: Made[] = [];
-for (const height of heights) logos.push(await scaled("logo-source.png", logoCrop, widthAt(height), height, "image/webp", `brand/logo-${height}.webp`));
-
-// ---- The icons: the mark on its black square, with less of the empty black round it ----
-const icon = await measure("icon-source.png", "light", ICON_LIGHT);
-const iconCrop = squareRound(icon.box, ICON_AIR, icon.width, icon.height);
-// The pictures a browser tab shows are cut closer than a home screen's, which rounds the corners off its own.
-const tabCrop = squareRound(icon.box, TAB_ICON_AIR, icon.width, icon.height);
-const iconAt = (size: number, name: string, crop = iconCrop) => scaled("icon-source.png", crop, size, size, "image/png", name);
-const icons = [await iconAt(32, "favicon-32.png", tabCrop), await iconAt(180, "apple-touch-icon.png"), await iconAt(192, "icon-192.png"), await iconAt(512, "icon-512.png")];
-const inIco = [await iconAt(16, "16", tabCrop), await iconAt(32, "32", tabCrop), await iconAt(48, "48", tabCrop)];
+const icons = [await icon(32, "favicon-32.png", TAB_ICON_AIR), await icon(180, "apple-touch-icon.png", ICON_AIR), await icon(192, "icon-192.png", ICON_AIR), await icon(512, "icon-512.png", ICON_AIR)];
+const inIco = [await icon(16, "16", TAB_ICON_AIR, SMALLEST_OUTLINE), await icon(32, "32", TAB_ICON_AIR), await icon(48, "48", TAB_ICON_AIR)];
 await browser.close();
 
-for (const made of [...logos, ...icons]) fs.writeFileSync(path.join(PUBLIC, made.name), Buffer.from(made.base64, "base64"));
+fs.mkdirSync(path.join(PUBLIC, "brand"), { recursive: true });
+fs.writeFileSync(path.join(PUBLIC, "brand", "emblem.svg"), emblem);
+for (const made of icons) fs.writeFileSync(path.join(PUBLIC, made.name), made.png);
 
 // favicon.ico: a small header, one line of 16 bytes for each picture, then the pictures themselves, each a PNG.
-const pictures = inIco.map((made) => Buffer.from(made.base64, "base64"));
+const pictures = inIco.map((made) => made.png);
 const header = Buffer.alloc(6 + 16 * pictures.length);
 header.writeUInt16LE(0, 0);
 header.writeUInt16LE(1, 2);
@@ -253,8 +161,8 @@ header.writeUInt16LE(pictures.length, 4);
 let offset = header.length;
 inIco.forEach((made, index) => {
   const at = 6 + 16 * index;
-  header.writeUInt8(made.width, at);
-  header.writeUInt8(made.height, at + 1);
+  header.writeUInt8(made.size, at);
+  header.writeUInt8(made.size, at + 1);
   header.writeUInt8(0, at + 2);
   header.writeUInt8(0, at + 3);
   header.writeUInt16LE(1, at + 4);
@@ -265,18 +173,14 @@ inIco.forEach((made, index) => {
 });
 fs.writeFileSync(path.join(PUBLIC, "favicon.ico"), Buffer.concat([header, ...pictures]));
 
-// The manifest: the page's own colour, read from the design tokens (the dark theme's, which is the icon's own ground).
-const tokens = fs.readFileSync(path.resolve("web", "src", "styles", "tokens.css"), "utf8");
-const dark = /\n:root\[data-theme="dark"\]\s*\{([\s\S]*?)\n\}/.exec(tokens)?.[1] ?? "";
-const pageColour = /--bg:\s*(#[0-9a-fA-F]{6});/.exec(dark)?.[1];
-if (pageColour === undefined) throw new Error("make-brand: the page's colour (--bg) is not in the design tokens");
+// The manifest: the paper's colour, which is the icons' own ground.
 const manifest = {
   name: "SaplingDex",
   short_name: "SaplingDex",
   start_url: "/",
   display: "browser",
-  theme_color: pageColour,
-  background_color: pageColour,
+  theme_color: paper,
+  background_color: paper,
   icons: [
     { src: "/icon-192.png", sizes: "192x192", type: "image/png" },
     { src: "/icon-512.png", sizes: "512x512", type: "image/png" },
@@ -284,38 +188,9 @@ const manifest = {
 };
 fs.writeFileSync(path.join(PUBLIC, "site.webmanifest"), `${JSON.stringify(manifest, null, 2)}\n`);
 
-// The sizes the page needs, so that the logo takes its place before it has loaded.
-const sizes = LOGO_HEIGHTS.map((height) => `  ${height}: { width: ${widthAt(height)}, height: ${height} },`).join("\n");
-fs.writeFileSync(
-  path.resolve("shared", "brand.ts"),
-  `// Written by scripts/make-brand.ts from the logo's source file. Do not edit by hand: run the script again.
-
-/** The heights the logo is made for, in CSS pixels, each with the width that keeps its shape. */
-export const LOGO_SIZES = {
-${sizes}
-} as const;
-
-export type LogoHeight = keyof typeof LOGO_SIZES;
-
-/** How many device pixels to a CSS pixel each height is made for. */
-export const LOGO_DENSITIES = [${DENSITIES.join(", ")}] as const;
-
-/** The address of the logo at a height and a density: the file is as many pixels high as the two multiplied. */
-export function logoSrc(height: LogoHeight, density: (typeof LOGO_DENSITIES)[number] = 1): string {
-  return \`/brand/logo-\${height * density}.webp\`;
-}
-
-/** The three files for one height, as a browser is told of them: it takes the one for its own screen. */
-export function logoSrcSet(height: LogoHeight): string {
-  return LOGO_DENSITIES.map((density) => \`\${logoSrc(height, density)} \${density}x\`).join(", ");
-}
-`,
-);
-
 const kb = (file: string) => `${(fs.statSync(path.join(PUBLIC, file)).size / 1024).toFixed(1)} KB`;
-console.log(`make-brand: logo ${logo.width} x ${logo.height}, mark at ${JSON.stringify(logo.box)}, cut to ${JSON.stringify(logoCrop)}`);
-for (const made of logos) console.log(`  ${made.name}  ${made.width} x ${made.height}  ${kb(made.name)}`);
-console.log(`make-brand: icon ${icon.width} x ${icon.height}, mark and its light at ${JSON.stringify(icon.box)}, cut to ${JSON.stringify(iconCrop)} (a tab's: ${JSON.stringify(tabCrop)})`);
-for (const made of icons) console.log(`  ${made.name}  ${made.width} x ${made.height}  ${kb(made.name)}`);
-console.log(`  favicon.ico  ${inIco.map((made) => made.width).join(", ")}  ${kb("favicon.ico")}`);
-console.log(`  site.webmanifest  ${pageColour}`);
+console.log(`make-brand: the emblem in ${ink} on ${paper}`);
+console.log(`  brand/emblem.svg  ${kb(path.join("brand", "emblem.svg"))}`);
+for (const made of icons) console.log(`  ${made.name}  ${made.size} x ${made.size}  ${kb(made.name)}`);
+console.log(`  favicon.ico  ${inIco.map((made) => made.size).join(", ")}  ${kb("favicon.ico")}`);
+console.log(`  site.webmanifest  ${paper}`);

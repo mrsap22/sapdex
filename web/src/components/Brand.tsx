@@ -1,17 +1,15 @@
-import { LOGO_SIZES, logoSrc, logoSrcSet, type LogoHeight } from "../../../shared/brand.ts";
 import { navigate } from "../router.ts";
 
 /**
- * The mark: the project's logo, as it was supplied. The site serves its own copies, made from the
- * source file by scripts/make-brand.ts at each height it is shown at, for screens of one, two and
- * three device pixels to a pixel. Its width and height are set, so nothing moves when it arrives.
+ * The emblem: two leaves curving round each other. One flat shape, served by the site itself
+ * (made from the brand's own vector by scripts/make-brand.ts) and drawn in the colour of the text
+ * beside it, so it is right in both themes. It says nothing a screen reader needs: the name does.
  */
-export function Mark({ size = 28 }: { size?: LogoHeight }) {
-  const { width, height } = LOGO_SIZES[size];
-  return <img className="mark" src={logoSrc(size)} srcSet={logoSrcSet(size)} width={width} height={height} alt="SaplingDex" decoding="async" />;
+export function Mark() {
+  return <span className="mark" aria-hidden="true" />;
 }
 
-/** The name, linking home. */
+/** The emblem and the name, linking home. */
 export function Wordmark() {
   return (
     <a
@@ -24,7 +22,8 @@ export function Wordmark() {
         navigate("/");
       }}
     >
-      {/* The name is the wordmark: one word, in one colour, with nothing drawn beside it. */}
+      <Mark />
+      {/* The name is one word, in one colour. */}
       <span className="wordmark-text">SaplingDex</span>
     </a>
   );

@@ -1,7 +1,7 @@
-// The project's mark and the site's icons: the two source pictures are kept as they are, every size
-// the site shows is made from them and served by the site itself. The mark is the project's own:
-// two squares, one stepping over the other, in one colour. It is the browser tab's and the home
-// screen's picture; in the header the name stands alone.
+// The emblem and the site's icons. The emblem is two leaves curving round each other, supplied as a
+// photograph of it pressed into paper; a flat vector traced from that photograph is the one source
+// every size is made from. It stands beside the name in the header and the footer in the text's
+// own colour, and is the browser tab's and the home screen's picture in ink on paper.
 
 import { createHash } from "node:crypto";
 import fs from "node:fs";
@@ -15,7 +15,6 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { requestPath, securityHeaders } from "../server/http.ts";
 import { loadStaticSite } from "../server/static.ts";
-import { LOGO_DENSITIES, LOGO_SIZES, logoSrc, logoSrcSet } from "../shared/brand.ts";
 import { Mark, Wordmark } from "../web/src/components/Brand.tsx";
 
 const PUBLIC = path.resolve("web", "public");
@@ -56,66 +55,68 @@ function pngPixels(png: Buffer): { width: number; height: number; at(x: number, 
   return { width, height, at: (x, y) => [out[y * stride + x * 3]!, out[y * stride + x * 3 + 1]!, out[y * stride + x * 3 + 2]!] };
 }
 
-/** The size of a WebP, whether it keeps transparency, and whether it carries a colour profile. */
-function webpHead(webp: Buffer): { width: number; height: number; alpha: boolean; profile: boolean } {
-  expect(webp.toString("latin1", 0, 4)).toBe("RIFF");
-  expect(webp.toString("latin1", 8, 16)).toBe("WEBPVP8X");
-  expect(webp.readUInt32LE(4)).toBe(webp.length - 8);
-  return { width: webp.readUIntLE(24, 3) + 1, height: webp.readUIntLE(27, 3) + 1, alpha: (webp[20]! & 0x10) !== 0, profile: (webp[20]! & 0x20) !== 0 || webp.includes("ICCP") };
-}
-
 describe("the supplied artwork", () => {
-  it("is kept in the project as it was supplied: the two source files, unchanged", () => {
+  it("is kept in the project: the photograph as it was supplied, and the one vector traced from it", () => {
     const print = (name: string) => createHash("sha256").update(fs.readFileSync(path.join(SOURCES, name))).digest("hex");
-    expect(fs.readdirSync(SOURCES).sort()).toEqual(["icon-source.png", "logo-source.png"]);
-    expect(print("logo-source.png")).toBe("1404352c15eaf36e3c99bba005627d580fe4aa1cc19c8d41e5f4a0ac5f1e5f1e");
-    expect(print("icon-source.png")).toBe("deaa679e4242955f32737aba3ba8567a6bde62dbfab6a145a31be4970d52fc0b");
-    // The logo is on a transparent ground (its pictures keep an alpha channel); the icon is a square of its own, with none.
-    const [logo, icon] = ["logo-source.png", "icon-source.png"].map((name) => fs.readFileSync(path.join(SOURCES, name))) as [Buffer, Buffer];
-    expect(pngHead(logo)).toMatchObject({ width: 500, height: 500 });
-    expect(pngHead(icon)).toMatchObject({ width: 500, height: 500 });
-    expect([pngHead(logo).alpha, pngHead(icon).alpha]).toEqual([true, false]);
+    expect(fs.readdirSync(SOURCES).sort()).toEqual(["emblem-photo.png", "emblem.svg"]);
+    expect(print("emblem-photo.png")).toBe("608c2ebe146a71826061c9ed30763950a17cfecc31ad74c3c3e52e38d3de12ab");
+    expect(print("emblem.svg")).toBe("0f911b9a3584e750c3f2656b423865ee1a5250820729cd3b9d314a72ac37adb2");
+    expect(pngHead(fs.readFileSync(path.join(SOURCES, "emblem-photo.png")))).toMatchObject({ width: 500, height: 500 });
   });
 
-  it("is only scaled by the script that makes the sizes: nothing in it recolours, redraws or adds an effect", () => {
+  it("the vector is one flat shape in one colour on no ground: no gradient, no outline, no second colour, nothing but the path", () => {
+    const svg = fs.readFileSync(path.join(SOURCES, "emblem.svg"), "utf8");
+    expect(svg).toMatch(/^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg" viewBox="0 0 100 100"><path fill="currentColor" d="[MCZ0-9 .-]+"\/><\/svg>\n$/);
+    // Two pieces, and the second is the first turned half round about the middle, to the hundredth: the two leaves are one leaf twice.
+    const pieces = /d="([^"]+)"/.exec(svg)![1]!.split("Z").filter((piece) => piece !== "");
+    expect(pieces).toHaveLength(2);
+    const numbers = (piece: string) => (piece.match(/-?\d+(?:\.\d+)?/g) ?? []).map(Number);
+    const [first, second] = [numbers(pieces[0]!), numbers(pieces[1]!)];
+    expect(first.length).toBeGreaterThan(200);
+    expect(second).toHaveLength(first.length);
+    first.forEach((value, index) => expect(Math.abs(value + second[index]! - 100), String(index)).toBeLessThan(0.011));
+    // It fills its square and stays inside it.
+    expect(Math.min(...first, ...second)).toBeGreaterThanOrEqual(0);
+    expect(Math.max(...first, ...second)).toBeLessThanOrEqual(100);
+    expect(Math.max(...first, ...second) - Math.min(...first, ...second)).toBeGreaterThan(95);
+  });
+
+  it("is only drawn at each size by the script that makes the icons, in the ink and paper of the design tokens: no effect, no other colour", () => {
     const script = fs.readFileSync(path.resolve("scripts", "make-brand.ts"), "utf8");
-    for (const never of [/\.filter\s*=/, /globalCompositeOperation/, /shadowBlur|shadowColor/, /fillStyle|strokeStyle|fillRect|fillText/, /putImageData/, /hue-rotate|invert\(|brightness\(|contrast\(|saturate\(/]) expect(script, String(never)).not.toMatch(never);
-    expect(script).toMatch(/createImageBitmap\(blob, part\.x, part\.y, part\.width, part\.height, \{ resizeWidth: w as number, resizeHeight: h as number, resizeQuality: "high" \}\)/);
+    for (const never of [/\.filter\s*=/, /globalCompositeOperation/, /shadowBlur|shadowColor/, /fillText/, /putImageData/, /hue-rotate|invert\(|brightness\(|contrast\(|saturate\(/, /gradient/i, /#[0-9a-fA-F]{6}\b(?!\})/]) expect(script, String(never)).not.toMatch(never);
+    expect(script).toContain("--bg:");
+    expect(script).toContain("--text:");
+    // The one thing done for size: a hair of outline in the same ink, for the 16 px picture alone.
+    expect(script.match(/SMALLEST_OUTLINE\)/g)).toHaveLength(1);
+    expect(script).toContain('await icon(16, "16", TAB_ICON_AIR, SMALLEST_OUTLINE)');
   });
 });
 
-describe("the logo on the site", () => {
-  it("is made at 24, 28 and 32 px high, each for one, two and three device pixels, with transparency kept and no needless weight", () => {
-    expect(Object.keys(LOGO_SIZES).map(Number)).toEqual([24, 28, 32]);
-    expect([...LOGO_DENSITIES]).toEqual([1, 2, 3]);
-    const heights = [24, 28, 32].flatMap((height) => [1, 2, 3].map((density) => height * density));
-    expect(fs.readdirSync(path.join(PUBLIC, "brand")).sort()).toEqual([...new Set(heights)].map((height) => `logo-${height}.webp`).sort());
-    for (const [height, { width }] of Object.entries(LOGO_SIZES)) {
-      for (const density of LOGO_DENSITIES) {
-        const src = logoSrc(Number(height) as 24, density);
-        expect(src).toBe(`/brand/logo-${Number(height) * density}.webp`);
-        const head = webpHead(file(src));
-        // To the pixel: the shape the page reserves is the shape of the file.
-        expect(head).toEqual({ width: width * density, height: Number(height) * density, alpha: true, profile: false });
-        expect(file(src).length).toBeLessThan(8 * 1024);
-      }
-    }
-    expect(logoSrcSet(28)).toBe("/brand/logo-28.webp 1x, /brand/logo-56.webp 2x, /brand/logo-84.webp 3x");
+describe("the emblem on the site", () => {
+  it("the site serves its own copy of the vector, the same file as the source", () => {
+    expect(fs.readdirSync(path.join(PUBLIC, "brand"))).toEqual(["emblem.svg"]);
+    expect(file("brand/emblem.svg").equals(fs.readFileSync(path.join(SOURCES, "emblem.svg")))).toBe(true);
+    expect(file("brand/emblem.svg").length).toBeLessThan(16 * 1024);
   });
 
-  it("the wordmark is the name alone: one word, in one colour, linking home, with nothing drawn beside it", () => {
+  it("stands to the left of the name, in the text's own colour, and the name stays one word in one colour, linking home", () => {
     const drawn = (element: Parameters<typeof renderToStaticMarkup>[0]) => renderToStaticMarkup(element).replace(/<link rel="preload"[^>]*>/g, "");
-    expect(drawn(createElement(Wordmark))).toBe('<a class="wordmark" href="/" aria-label="SaplingDex, home"><span class="wordmark-text">SaplingDex</span></a>');
+    expect(drawn(createElement(Wordmark))).toBe('<a class="wordmark" href="/" aria-label="SaplingDex, home"><span class="mark" aria-hidden="true"></span><span class="wordmark-text">SaplingDex</span></a>');
+    expect(drawn(createElement(Mark))).toBe('<span class="mark" aria-hidden="true"></span>');
     // In the site's own sans at its firmest weight, upright: never the italic serif of the headlines.
     const css = fs.readFileSync(path.resolve("web", "src", "styles", "shell.css"), "utf8");
     const rule = /\n\.wordmark \{[^}]*\}/.exec(css)?.[0] ?? "";
     expect(rule).toMatch(/font-weight: var\(--weight-600\);/);
     expect(rule).toMatch(/color: var\(--text\);/);
     expect(rule).not.toMatch(/font-family|font-style/);
-    // The name is always shown: there is nothing else to stand for the site.
+    // The name is always shown.
     expect(css).not.toMatch(/\.wordmark-text \{[^}]*display: none/);
-    // The mark is kept for the browser tab and a phone's home screen, and for the day there is artwork of the project's own.
-    expect(drawn(createElement(Mark))).toBe('<img class="mark" src="/brand/logo-28.webp" srcSet="/brand/logo-28.webp 1x, /brand/logo-56.webp 2x, /brand/logo-84.webp 3x" width="28" height="28" alt="SaplingDex" decoding="async"/>');
+    // The emblem is the site's own file, filled with whatever colour the text beside it has: right in both themes, with no second picture.
+    const mark = /\n\.mark \{[^}]*\}/.exec(css)?.[0] ?? "";
+    expect(mark).toMatch(/background: currentColor;/);
+    expect(mark).toContain('\n  mask: url("/brand/emblem.svg") center / contain no-repeat;');
+    expect(mark).toMatch(/width: var\(--height-24\);\s*height: var\(--height-24\);/);
+    expect(css.match(/emblem\.svg/g)).toHaveLength(2);
   });
 
   it("is the one mark in the header and the footer of every page", () => {
@@ -154,23 +155,31 @@ describe("the favicon, the home-screen icons and the manifest", () => {
     for (const [name, size] of [["favicon-32.png", 32], ["apple-touch-icon.png", 180], ["icon-192.png", 192], ["icon-512.png", 512]] as const) expect(pngHead(file(name)), name).toEqual({ width: size, height: size, alpha: false });
   });
 
-  it("the mark fills the small square and is not cut: its light stops short of every edge, and it spans most of the width", () => {
-    for (const name of ["favicon-32.png", "icon-192.png"]) {
+  it("the emblem is ink on paper, fills the small square and is not cut: the paper runs round every edge, and the emblem spans most of the width", () => {
+    const hex = ([r, g, b]: [number, number, number]) => `#${[r, g, b].map((value) => value.toString(16).padStart(2, "0")).join("")}`;
+    for (const name of ["favicon-32.png", "apple-touch-icon.png", "icon-192.png", "icon-512.png"]) {
       const { width, height, at } = pngPixels(file(name));
-      // The ground is the colour of the picture's corner; the mark is whatever is plainly lighter than it.
-      const ground = Math.max(...at(0, 0));
-      const lit = (x: number, y: number) => Math.max(...at(x, y)) >= ground + 60;
-      for (let i = 0; i < width; i++) for (const [x, y] of [[i, 0], [i, height - 1], [0, i], [width - 1, i]] as const) expect(lit(x, y), `${name} ${x},${y}`).toBe(false);
-      const columns = [...Array(width).keys()].filter((x) => [...Array(height).keys()].some((y) => lit(x, y)));
+      // The ground is the paper of the design tokens, and the darkest pixel is their ink: no third colour is brought in.
+      expect(hex(at(0, 0)), name).toBe("#eef0f7");
+      const inked = (x: number, y: number) => Math.max(...at(x, y)) <= Math.max(...at(0, 0)) - 60;
+      for (let i = 0; i < width; i++) for (const [x, y] of [[i, 0], [i, height - 1], [0, i], [width - 1, i]] as const) expect(inked(x, y), `${name} ${x},${y}`).toBe(false);
+      const columns = [...Array(width).keys()].filter((x) => [...Array(height).keys()].some((y) => inked(x, y)));
       expect((columns.at(-1)! - columns[0]! + 1) / width, name).toBeGreaterThan(0.68);
+      const seen = new Set<string>();
+      for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) seen.add(hex(at(x, y)));
+      expect(seen.has("#141a55"), name).toBe(true);
+      // Turned half round it is the same picture (to a soft edge): two leaves, one the other's turn.
+      let differ = 0;
+      for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) if (inked(x, y) !== inked(width - 1 - x, height - 1 - y)) differ += 1;
+      expect(differ / (width * height), name).toBeLessThan(0.02);
     }
   });
 
   it("the manifest names the site, its two large icons, and the page's own colour from the design tokens", () => {
     const tokens = fs.readFileSync(path.resolve("web", "src", "styles", "tokens.css"), "utf8");
-    // The icon's own ground: the dark side of the sheet.
-    const page = /\n:root\[data-theme="dark"\] \{[\s\S]*?--bg: (#[0-9a-f]{6});/.exec(tokens)?.[1];
-    expect(page).toBe("#0e1338");
+    // The icons' own ground: the paper.
+    const page = /\n:root,\n:root\[data-theme="light"\] \{[\s\S]*?--bg: (#[0-9a-f]{6});/.exec(tokens)?.[1];
+    expect(page).toBe("#eef0f7");
     expect(JSON.parse(file("site.webmanifest").toString("utf8"))).toEqual({
       name: "SaplingDex",
       short_name: "SaplingDex",
@@ -214,9 +223,8 @@ describe("the favicon, the home-screen icons and the manifest", () => {
         ["/icon-192.png", "image/png"],
         ["/icon-512.png", "image/png"],
         ["/site.webmanifest", "application/manifest+json; charset=utf-8"],
-        ...fs.readdirSync(path.join(PUBLIC, "brand")).map((name): [string, string] => [`/brand/${name}`, "image/webp"]),
+        ["/brand/emblem.svg", "image/svg+xml"],
       ];
-      expect(wanted).toHaveLength(15);
       for (const [address, type] of wanted) {
         const reply = await fetch(base + address);
         expect(reply.status, address).toBe(200);

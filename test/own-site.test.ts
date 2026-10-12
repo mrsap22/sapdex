@@ -422,8 +422,8 @@ describe("no page asks any other address for anything", () => {
       // No request is ever made to an address written out in full: every one is a path of this site.
       for (const call of text.matchAll(/\b(?:fetch|EventSource|WebSocket|sendBeacon|importScripts)\(\s*[`"']([^`"']*)/g)) expect(call[1]!.startsWith("/") || call[1] === "", `${name(file)}: ${call[0]}`).toBe(true);
       expect(text, name(file)).not.toMatch(/new WebSocket|new EventSource|navigator\.sendBeacon|XMLHttpRequest|<iframe|<script\b[^>]*src=/);
-      // A stylesheet fetches only what is beside it: its own fonts and pictures.
-      if (file.endsWith(".css")) for (const url of text.matchAll(/url\(\s*["']?([^"')]+)/g)) expect(url[1]!.startsWith("../assets/") || url[1]!.startsWith("data:"), `${name(file)}: ${url[1]}`).toBe(true);
+      // A stylesheet fetches only what is beside it, its own fonts and pictures, and the site's own emblem.
+      if (file.endsWith(".css")) for (const url of text.matchAll(/url\(\s*["']?([^"')]+)/g)) expect(url[1]!.startsWith("../assets/") || url[1]!.startsWith("data:") || url[1] === "/brand/emblem.svg", `${name(file)}: ${url[1]}`).toBe(true);
       expect(text, name(file)).not.toMatch(/@import\s+(?:url\()?["']https?:/);
     }
     // The fonts are the site's own files, named by the page so that they come with it.

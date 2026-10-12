@@ -3,8 +3,8 @@
   "short_name": "SaplingDex",
   "start_url": "/",
   "display": "browser",
-  "theme_color": "#0e1338",
-  "background_color": "#0e1338",
+  "theme_color": "#eef0f7",
+  "background_color": "#eef0f7",
   "icons": [
     {
       "src": "/icon-192.png",
