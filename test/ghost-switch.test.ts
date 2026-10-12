@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OrderView, QuoteView, TokenView } from "../shared/api.ts";
 import { inlineScriptHashes } from "../server/static.ts";
 import { CoinPicker } from "../web/src/components/CoinPicker.tsx";
-import { GHOST_CHANGES, GHOST_STILL, GhostSheet } from "../web/src/components/GhostSheet.tsx";
+import { GHOST_ALWAYS, GHOST_CHANGES, GHOST_STILL, GhostSheet } from "../web/src/components/GhostSheet.tsx";
 import { MenuSheet } from "../web/src/components/MenuSheet.tsx";
 import { LeavesSite, OutboundLink } from "../web/src/components/OutboundLink.tsx";
 import { GHOST_ORDER_LINE, GHOST_REWARDS_HINT, ReviewSheet } from "../web/src/components/ReviewSheet.tsx";
@@ -777,17 +777,19 @@ describe("the switch in the header", () => {
 describe("the sheet that explains the mode", () => {
   const sheet = () => draw(createElement(GhostSheet));
 
-  it("says what changes in four plain lines, what does not, and that the switch is remembered for this tab only", () => {
+  it("says what changes in two plain lines, what is so in any mode in one quiet line, what does not change, and that the switch is remembered for this tab only", () => {
     const html = sheet();
     expect(html).toMatch(/<h2 id="[^"]+" class="sheet-title">Ghost mode<\/h2>/);
-    expect(GHOST_CHANGES.map((change) => change.key)).toEqual(["wallet", "requests", "browser", "record"]);
+    expect(GHOST_CHANGES.map((change) => change.key)).toEqual(["browser", "record"]);
     const lines = [...html.matchAll(/<li class="ghost-point"><svg[^>]*aria-hidden="true">.*?<\/svg><span>([^<]*)<\/span><\/li>/g)].map((match) => words(match[1]!));
     expect(lines).toEqual([
-      "No wallet is spoken to: the Rewards sign-in is off, and its code is not loaded. You pay by sending to the deposit address.",
-      "This page asks nothing of any address but this site's own.",
-      "Nothing is kept in this browser but the switch itself, for this tab only, so that loading the page again does not turn it off.",
+      "Nothing is kept in this browser but the switch itself, for this tab only, so that loading the page again does not turn it off. The Rewards sign-in is off.",
       "An order you make is not listed among recent swaps, and its record is deleted from the server the moment it is delivered or refunded.",
     ]);
+    expect(words(html)).toContain("While it is on, two things change.");
+    // What is always so is no change, and is not among them: it stands beneath, once, quietly.
+    expect(GHOST_ALWAYS).toBe("With it on or off, no wallet is connected to pay, and this page asks nothing of any address but this site's own.");
+    expect(html).toContain(`</ul><p class="ghost-always muted">${GHOST_ALWAYS.replace("'", "&#x27;")}</p><p class="ghost-still muted">`);
     expect(GHOST_STILL).toBe("Your deposit and your delivery are still public on their own chains, the swap service still carries out the swap, and your internet address is still seen by your network and by this site's host.");
     expect(words(html)).toContain(`${GHOST_STILL} More about Ghost mode`);
     expect(html).toContain('<a href="/docs/ghost-mode">More<span class="sr-only"> about Ghost mode</span></a>');

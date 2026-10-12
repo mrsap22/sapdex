@@ -150,8 +150,8 @@ const NOTICE = "This order finished. It was made in Ghost mode, so its record wa
 const LIST_NOT_SHOWN = "Orders made in this browser are not shown in Ghost mode.";
 const OWN_LINK_ONLY = "An order made in Ghost mode opens from its own link only.";
 const FAQ_ANSWER =
-  "A switch in the header. While it is on, this site speaks to no wallet and keeps nothing in your browser but the switch itself, and the record of an order you make is deleted from its server the moment the order is delivered or refunded. It does not make a swap less public: the deposit and the delivery are still public transfers, the swap service still carries out the swap, and your network and this site's host still see your network address. How Ghost mode works";
-const HOME_LINE = "One switch in the header. While it is on, the site speaks to no wallet and keeps nothing in your browser but the switch itself, and deletes your order's record once it is delivered or refunded. Your deposit and your delivery are still public on-chain.";
+  "A switch in the header. While it is on, this site keeps nothing in your browser but the switch itself, and the record of an order you make is deleted from its server the moment the order is delivered or refunded. It does not make a swap less public: the deposit and the delivery are still public transfers, the swap service still carries out the swap, and your network and this site's host still see your network address. How Ghost mode works";
+const HOME_LINE = "One switch in the header. While it is on, the site keeps nothing in your browser but the switch itself, and deletes your order's record once it is delivered or refunded. Your deposit and your delivery are still public on-chain.";
 
 describe("the Rewards page in Ghost mode", () => {
   const MONDAY = Date.parse("2026-10-05T00:00:00.000Z");
@@ -615,23 +615,21 @@ describe("the Docs' page on Ghost mode", () => {
 
   it("says what it is: one switch, in the header", () => {
     const text = words(draw(ghostDocs));
-    expect(text).toContain("One switch in the header. While it is on, this site speaks to no wallet, asks nothing of any other site and keeps nothing in your browser but the switch itself, and the record of an order you make is deleted from its server when the order finishes. This page says what that covers, and what it does not.");
-    expect(section(draw(ghostDocs), "what")).toContain("Ghost mode is one switch, in the header. With it on, a swap works as it always does: a quote, a review, an order, a deposit, a delivery. What changes is what the site loads, what it asks of other sites, and what it and your browser keep. It changes how the site is used, not the swap. The swap itself is the same, and as public as any other.");
+    expect(text).toContain("One switch in the header. While it is on, this site keeps nothing in your browser but the switch itself, and the record of an order you make is deleted from its server when the order finishes. This page says what that covers, and what it does not.");
+    expect(section(draw(ghostDocs), "what")).toContain("Ghost mode is one switch, in the header. With it on, a swap works as it always does: a quote, a review, an order, a deposit, a delivery. What changes is what the site and your browser keep. It changes how the site is used, not the swap. The swap itself is the same, and as public as any other.");
   });
 
-  it("says the five things it does, each with its one true detail", () => {
+  it("says the three things it does, each with its one true detail, and what is so in any mode", () => {
     const does = section(draw(ghostDocs), "does");
-    expect(draw(ghostDocs).match(/<h2 id="does"[\s\S]*?<\/ul>/)?.[0].match(/<li>/g)).toHaveLength(5);
+    expect(draw(ghostDocs).match(/<h2 id="does"[\s\S]*?<\/ul>/)?.[0].match(/<li>/g)).toHaveLength(3);
     for (const sentence of [
-      "Five things, for as long as the switch is on.",
+      "Three things, for as long as the switch is on.",
       // The switch: remembered for the tab only, and gone with the tab.
       "The switch is the one thing remembered. It is kept as a single on/off flag for this tab, so that loading the page again does not turn Ghost mode off. It ends when the tab is closed.",
-      // No wallet, and so no sign-in on the Rewards page.
-      "No wallet is spoken to. The site connects to no wallet in any mode: you pay by sending to the order's deposit address, from any wallet. The one thing that ever speaks to a wallet is the Rewards sign-in, and in Ghost mode it is off: its code is not fetched at all.",
-      // Nothing goes to anyone else; links out still work.
-      "Nothing is asked of any other site. The page asks nothing of any address but this site's own, and tells your browser to refuse anything else. A link that leaves the site still works as a plain link: it opens in a new tab, carries a small mark that says it leaves this site, and does not tell the other site where you came from.",
       // Nothing kept in the browser; earlier orders come back unless they were cleared.
-      'Nothing is kept in your browser. No list of your orders, no copy of the coin list, no note of any kind: only the switch itself. Orders you made earlier, in normal mode, are not shown while Ghost mode is on. They are there again when you turn it off, unless you chose "Also clear what this browser already holds" when you turned it on.',
+      'Nothing is kept in your browser. No list of your orders, no copy of the coin list, no note of any kind: only the switch itself. Orders you made earlier, in normal mode, are not shown while Ghost mode is on. They are there again when you turn it off, unless you chose "Also clear what this browser already holds" when you turned it on. The Rewards sign-in is off while the mode is on: its code is not fetched at all.',
+      // What is so with the switch on or off is said as that, after the three: no wallet to pay, and nothing asked of any other address.
+      "Two things are so in any mode, with the switch on or off, and so are no change. No wallet is connected to pay: you pay by sending to the order's deposit address, from any wallet. And the page asks nothing of any address but this site's own, and tells your browser to refuse anything else. A link that leaves the site still works as a plain link: it opens in a new tab, carries a small mark that says it leaves this site, and does not tell the other site where you came from.",
       // On the server: deleted the moment it finishes; its own link only; never by its deposit address.
       "An order's record is deleted when it finishes. An order made in Ghost mode is marked as one. The moment it is delivered or refunded its record is deleted from the server. One that was never paid is deleted a day after its deadline, once the server has stopped looking for a late deposit. Until then its own link is the only way back to it: it is on no list, and it is never found from its deposit address. After that the link says only that the order finished, and in one word how: delivered, refunded, or run out.",
       "Keep the order's link. It is the only way back to an order made in Ghost mode, and it is not saved anywhere. The order's page has a Copy link button.",
@@ -696,7 +694,7 @@ describe("the Docs' page on Ghost mode", () => {
     const markup = draw(ghostDocs);
     expect(sections(markup).at(-1)).toBe("switch: Turning it on and off");
     expect(section(markup, "switch")).toContain(
-      'Press the Ghost mode button in the header. The first time since the page was loaded, a short sheet says what the mode does and asks "Turn on" or "Not now". The same sheet offers "Also clear what this browser already holds", which removes what the site kept here in normal mode. While it is on, the header shows "Ghost mode" where Connect would be. Press that to turn it off. The page then loads itself again, in normal mode. Closing the tab turns it off as well.',
+      'Press the Ghost mode button in the header. The first time since the page was loaded, a short sheet says what the mode does and asks "Turn on" or "Not now". The same sheet offers "Also clear what this browser already holds", which removes what the site kept here in normal mode. While it is on, the Ghost mode button in the header is shown as on. Press it to turn the mode off. The page then loads itself again, in normal mode. Closing the tab turns it off as well.',
     );
   });
 

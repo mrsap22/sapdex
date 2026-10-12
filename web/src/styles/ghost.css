@@ -199,6 +199,11 @@
   color: var(--text-muted);
 }
 
+/* What is so with the mode on or off: one quiet line. */
+.ghost-always {
+  text-wrap: pretty;
+}
+
 /* What stays as it is, set apart by a hairline. */
 .ghost-still {
   padding-top: var(--space-16);

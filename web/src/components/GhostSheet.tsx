@@ -1,4 +1,4 @@
-import { GlobeLock, SaveOff, Trash2, Unplug } from "lucide-react";
+import { SaveOff, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useGhost } from "../stores/ghost.ts";
 import { useSheet } from "../stores/sheet.ts";
@@ -8,18 +8,19 @@ import { Sheet } from "./Sheet.tsx";
 
 /** What changes while Ghost mode is on, as the person meets it: one plain sentence each. */
 export const GHOST_CHANGES = [
-  { key: "wallet", Icon: Unplug, text: "No wallet is spoken to: the Rewards sign-in is off, and its code is not loaded. You pay by sending to the deposit address." },
-  { key: "requests", Icon: GlobeLock, text: "This page asks nothing of any address but this site's own." },
-  { key: "browser", Icon: SaveOff, text: "Nothing is kept in this browser but the switch itself, for this tab only, so that loading the page again does not turn it off." },
+  { key: "browser", Icon: SaveOff, text: "Nothing is kept in this browser but the switch itself, for this tab only, so that loading the page again does not turn it off. The Rewards sign-in is off." },
   { key: "record", Icon: Trash2, text: "An order you make is not listed among recent swaps, and its record is deleted from the server the moment it is delivered or refunded." },
 ] as const;
+
+/** What is so in any mode, and so is no change: said once, quietly, beneath the changes. */
+export const GHOST_ALWAYS = "With it on or off, no wallet is connected to pay, and this page asks nothing of any address but this site's own.";
 
 /** What the mode does not change, said as plainly. */
 export const GHOST_STILL = "Your deposit and your delivery are still public on their own chains, the swap service still carries out the swap, and your internet address is still seen by your network and by this site's host.";
 
 /**
  * The sheet that explains Ghost mode, shown before the mode is first turned on since the page was
- * loaded: what changes, in four lines; what does not; and the one extra thing turning it on can do,
+ * loaded: what changes, in two lines; what is always so; what does not change; and the one extra thing turning it on can do,
  * which is to clear what this browser already holds. "Turn on" turns it on. "Not now", Close and Esc
  * close the sheet and change nothing.
  */
@@ -71,7 +72,7 @@ export function GhostSheet() {
       }
     >
       <div className="ghost-sheet">
-        <p className="ghost-lead">While it is on, four things change.</p>
+        <p className="ghost-lead">While it is on, two things change.</p>
         <ul className="ghost-points">
           {GHOST_CHANGES.map(({ key, Icon, text }) => (
             <li key={key} className="ghost-point">
@@ -80,6 +81,7 @@ export function GhostSheet() {
             </li>
           ))}
         </ul>
+        <p className="ghost-always muted">{GHOST_ALWAYS}</p>
         <p className="ghost-still muted">
           {GHOST_STILL}{" "}
           <Link href="/docs/ghost-mode" onNavigate={close}>

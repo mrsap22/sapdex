@@ -324,7 +324,7 @@ describe("what the wider pages state as fact", () => {
       { key: "tracking", title: "Order tracking and automatic refunds", text: "Every order has its own page, which follows the deposit, the swap and the delivery. If a swap fails, the provider sends your coins back to your refund address.", link: { href: "/track", label: "Track an order" } },
       { key: "rewards", title: "Points and weekly rewards", text: "Each delivered swap adds points to the Solana address named for it: 10 for each $1 swapped. Each week the pool is shared out by points, in ZEC. Payouts are at SaplingDex's discretion and can change.", link: { href: "/rewards", label: "See your points" } },
       // Ghost mode: what it does, in one sentence, and then the first thing it does not.
-      { key: "ghost", title: "Ghost mode", text: "One switch in the header. While it is on, the site speaks to no wallet and keeps nothing in your browser but the switch itself, and deletes your order's record once it is delivered or refunded. Your deposit and your delivery are still public on-chain.", link: { href: "/docs/ghost-mode", label: "How Ghost mode works" } },
+      { key: "ghost", title: "Ghost mode", text: "One switch in the header. While it is on, the site keeps nothing in your browser but the switch itself, and deletes your order's record once it is delivered or refunded. Your deposit and your delivery are still public on-chain.", link: { href: "/docs/ghost-mode", label: "How Ghost mode works" } },
     ];
     expect(features(false)).toEqual(today);
     expect(features(false, false)).toEqual(today);

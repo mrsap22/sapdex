@@ -84,11 +84,11 @@ export async function ghostWalk(browser: Browser, options: { practiceUrl: string
       await sheet.waitFor({ timeout: 10_000 });
       await page.waitForTimeout(400);
       const said = (await sheet.innerText()).replace(/\s+/g, " ");
-      for (const line of ["No wallet is spoken to: the Rewards sign-in is off, and its code is not loaded. You pay by sending to the deposit address.", "asks nothing of any address but this site's own", "Nothing is kept in this browser but the switch itself", "its record is deleted from the server the moment it is delivered or refunded", "still public on their own chains"]) expectThat(said.includes(line), `the sheet does not say "${line}"`);
+      for (const line of ["While it is on, two things change.", "The Rewards sign-in is off.", "With it on or off, no wallet is connected to pay, and this page asks nothing of any address but this site's own.", "Nothing is kept in this browser but the switch itself", "its record is deleted from the server the moment it is delivered or refunded", "still public on their own chains"]) expectThat(said.includes(line), `the sheet does not say "${line}"`);
       expectThat(!/anonymous|untraceable/i.test(said), "the sheet uses a word it must never use");
-      // Its first line is about wallets: none is spoken to.
+      // Its first line is about what this browser keeps.
       const firstLine = ((await sheet.locator(".ghost-point").first().innerText()) ?? "").replace(/\s+/g, " ").trim();
-      expectThat(firstLine === "No wallet is spoken to: the Rewards sign-in is off, and its code is not loaded. You pay by sending to the deposit address.", `the sheet's first line reads "${firstLine}"`);
+      expectThat(firstLine === "Nothing is kept in this browser but the switch itself, for this tab only, so that loading the page again does not turn it off. The Rewards sign-in is off.", `the sheet's first line reads "${firstLine}"`);
       await shoot("sheet");
       // "Not now" changes nothing.
       await sheet.getByRole("button", { name: "Not now", exact: true }).click();

@@ -547,7 +547,7 @@ function PrivateRouting() {
 }
 
 /**
- * Ghost mode, in plain words: the one switch, the five things it does while it is on, what it does
+ * Ghost mode, in plain words: the one switch, the three things it does while it is on, what is so in any mode, what it does
  * not do, what is still kept of an order made in it, and how to turn it on and off. Every sentence
  * here states what the site and its server do; none says more of a swap than is so, and what the
  * mode leaves as it was (the public transfers, the swap service, the network address) has a
@@ -560,30 +560,25 @@ function GhostMode() {
   // Where the site has its Stats page, the totals an order is counted in are the ones shown there.
   const statsOn = useApp((state) => statsPageOn(state.config));
   return (
-    <DocsLayout href={docHref(GHOST_DOC_SLUG)} title="Ghost mode" lead="One switch in the header. While it is on, this site speaks to no wallet, asks nothing of any other site and keeps nothing in your browser but the switch itself, and the record of an order you make is deleted from its server when the order finishes. This page says what that covers, and what it does not.">
+    <DocsLayout href={docHref(GHOST_DOC_SLUG)} title="Ghost mode" lead="One switch in the header. While it is on, this site keeps nothing in your browser but the switch itself, and the record of an order you make is deleted from its server when the order finishes. This page says what that covers, and what it does not.">
       <DocSection title="What it is" id="what">
-        <p>Ghost mode is one switch, in the header. With it on, a swap works as it always does: a quote, a review, an order, a deposit, a delivery. What changes is what the site loads, what it asks of other sites, and what it and your browser keep.</p>
+        <p>Ghost mode is one switch, in the header. With it on, a swap works as it always does: a quote, a review, an order, a deposit, a delivery. What changes is what the site and your browser keep.</p>
         <p>It changes how the site is used, not the swap. The swap itself is the same, and as public as any other.</p>
       </DocSection>
       <DocSection title="What it does" id="does">
-        <p>Five things, for as long as the switch is on.</p>
+        <p>Three things, for as long as the switch is on.</p>
         <ul>
           <li>
             <strong>The switch is the one thing remembered.</strong> It is kept as a single on/off flag for this tab, so that loading the page again does not turn Ghost mode off. It ends when the tab is closed.
           </li>
           <li>
-            <strong>No wallet is spoken to.</strong> The site connects to no wallet in any mode: you pay by sending to the order's deposit address, from any wallet. The one thing that ever speaks to a wallet is the <Link href="/rewards">Rewards</Link> sign-in, and in Ghost mode it is off: its code is not fetched at all.
-          </li>
-          <li>
-            <strong>Nothing is asked of any other site.</strong> The page asks nothing of any address but this site's own, and tells your browser to refuse anything else. A link that leaves the site still works as a plain link: it opens in a new tab, carries a small mark that says it leaves this site, and does not tell the other site where you came from.
-          </li>
-          <li>
-            <strong>Nothing is kept in your browser.</strong> No list of your orders, no copy of the coin list, no note of any kind: only the switch itself. Orders you made earlier, in normal mode, are not shown while Ghost mode is on. They are there again when you turn it off, unless you chose "Also clear what this browser already holds" when you turned it on.
+            <strong>Nothing is kept in your browser.</strong> No list of your orders, no copy of the coin list, no note of any kind: only the switch itself. Orders you made earlier, in normal mode, are not shown while Ghost mode is on. They are there again when you turn it off, unless you chose "Also clear what this browser already holds" when you turned it on. The <Link href="/rewards">Rewards</Link> sign-in is off while the mode is on: its code is not fetched at all.
           </li>
           <li>
             <strong>An order's record is deleted when it finishes.</strong> An order made in Ghost mode is marked as one. The moment it is delivered or refunded its record is deleted from the server. One that was never paid is deleted a day after its deadline, once the server has stopped looking for a late deposit. Until then its own link is the only way back to it: it is on no list, and it is never found from its deposit address. After that the link says only that the order finished, and in one word how: delivered, refunded, or run out.
           </li>
         </ul>
+        <p>Two things are so in any mode, with the switch on or off, and so are no change. No wallet is connected to pay: you pay by sending to the order's deposit address, from any wallet. And the page asks nothing of any address but this site's own, and tells your browser to refuse anything else. A link that leaves the site still works as a plain link: it opens in a new tab, carries a small mark that says it leaves this site, and does not tell the other site where you came from.</p>
         <Callout tone="tip" title="Keep the order's link.">
           <p>It is the only way back to an order made in Ghost mode, and it is not saved anywhere. The order's page has a Copy link button.</p>
         </Callout>
@@ -641,7 +636,7 @@ function GhostMode() {
       ) : null}
       <DocSection title="Turning it on and off" id="switch">
         <p>Press the Ghost mode button in the header. The first time since the page was loaded, a short sheet says what the mode does and asks "Turn on" or "Not now". The same sheet offers "Also clear what this browser already holds", which removes what the site kept here in normal mode.</p>
-        <p>While it is on, the header shows "Ghost mode" where Connect would be. Press that to turn it off. The page then loads itself again, in normal mode.</p>
+        <p>While it is on, the Ghost mode button in the header is shown as on. Press it to turn the mode off. The page then loads itself again, in normal mode.</p>
         <p>Closing the tab turns it off as well.</p>
       </DocSection>
     </DocsLayout>
