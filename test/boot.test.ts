@@ -1,4 +1,3 @@
-import { generateKeyPairSync, sign } from "node:crypto";
 import fs from "node:fs";
 import type { AddressInfo } from "node:net";
 import os from "node:os";
@@ -10,7 +9,6 @@ import { ConfigError, loadConfig } from "../server/config.ts";
 import { SAMPLE, sampleOrderId, seedSamples, withSampleSettings } from "../server/sample.ts";
 import { createLogger } from "../server/log.ts";
 import { TERMS_VERSION } from "../shared/api.ts";
-import { RESERVE_ASSET } from "../shared/rewards.ts";
 import { ADDR, ASSET, FIXTURE_TOKENS } from "./helpers.ts";
 
 const FEE = "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045";
@@ -20,15 +18,12 @@ let lines: string[] = [];
 let outbound: string[] = [];
 let providerDown = false;
 
-/** The coin rewards are paid in, as the provider's coin list holds it: ZEC on Solana, at the reward coin's own mint, with a price. */
-const ZEC_ON_SOLANA = { assetId: "nep141:sol-zec.omft.near", decimals: 8, blockchain: "sol", symbol: "ZEC", price: 40, contractAddress: RESERVE_ASSET.contract };
-
 // A pretend outside world: the provider's coin list works, everything else is unreachable.
 const network: typeof fetch = async (input) => {
   const url = String(input);
   outbound.push(new URL(url).host + new URL(url).pathname);
   if (providerDown && url.includes("1click")) throw new Error("provider unreachable");
-  if (url.includes("/v0/tokens")) return new Response(JSON.stringify([...FIXTURE_TOKENS, ZEC_ON_SOLANA]));
+  if (url.includes("/v0/tokens")) return new Response(JSON.stringify(FIXTURE_TOKENS));
   throw new Error("unreachable in tests");
 };
 
@@ -195,56 +190,25 @@ describe("start-up wiring", () => {
     expect(lines.some((l) => l.includes('"localOnly":true'))).toBe(true);
   });
 
-  it("with the practice provider it has sample content to look at: orders in every end state, a token, a reserve, and points for whoever signs in", async () => {
-    // The server's clock is the test's own, so that what a week holds does not depend on the day or the hour the test is run at.
-    // It starts ten minutes into a week: Monday 5 October 2026 began one.
-    const monday = Date.parse("2026-10-05T00:00:00.000Z");
-    let clock = monday + 10 * 60_000;
-    const b = start({ NODE_ENV: "development", PROVIDER_STUB: "true", PORT: port() }, undefined, () => clock);
+  it("with the practice provider it has sample content to look at: orders in every end state, a token, and made-up swaps behind the Stats page", async () => {
+    const b = start({ NODE_ENV: "development", PROVIDER_STUB: "true", PORT: port() });
     const { port: at } = await listen(b);
-    const get = async (route: string, headers: Record<string, string> = {}) => (await fetch(`http://127.0.0.1:${at}${route}`, { headers })).json() as Promise<Record<string, unknown>>;
-    const config = (await get("/api/config")) as { sampleOrders: string[]; tokenAddress: string; reserveAddress: string; session: string };
+    const get = async (route: string) => (await fetch(`http://127.0.0.1:${at}${route}`)).json() as Promise<Record<string, unknown>>;
+    const config = (await get("/api/config")) as { sampleOrders: string[]; tokenAddress: string };
     expect(config.sampleOrders).toHaveLength(6);
-    expect(config).toMatchObject({ tokenAddress: SAMPLE.tokenAddress, reserveAddress: SAMPLE.reserveAddress });
-    // Both are made-up Solana addresses, and not the same one.
-    for (const made of [SAMPLE.tokenAddress, SAMPLE.reserveAddress]) expect(base58.decode(made)).toHaveLength(32);
-    expect(SAMPLE.tokenAddress).not.toBe(SAMPLE.reserveAddress);
+    expect(config).toMatchObject({ tokenAddress: SAMPLE.tokenAddress });
+    // The token's is a made-up Solana address.
+    expect(base58.decode(SAMPLE.tokenAddress)).toHaveLength(32);
     const statuses: string[] = [];
     for (const id of config.sampleOrders) statuses.push(String((await get(`/api/orders/${id}`)).status));
     expect(statuses).toEqual(["delivered", "delivered", "refunded", "refunded", "failed", "expired"]);
     expect(statuses.filter((status) => status === "delivered").length).toBeGreaterThanOrEqual(2);
-    // The pool is the sample one: 12.5 ZEC, valued at the coin list's price for ZEC on Solana ($40 here).
-    // The chain is not asked about it: no chain can be reached in this test, and the figures are there.
-    const rewards = (await get("/api/rewards")) as { pool: Record<string, unknown>; weekPointsMicro: string; weeks: unknown[] };
-    expect(rewards.pool).toMatchObject({ address: SAMPLE.reserveAddress, amount: "1250000000", decimals: 8, usdMicro: "500000000" });
-    expect(SAMPLE.pool).toBe(125n * 10n ** 7n);
-    // And the week has sample points in it before anyone signs in: three made-up swaps of $3,400, $1,820.50 and $760,
-    // which are 59,805 points. In a week's own first quarter of an hour they are not counted yet: the total is the one
-    // from when the quarter began. From the next quarter on, anyone is told the total as it is.
-    expect(rewards.weekPointsMicro).toBe("0");
-    clock = monday + 15 * 60_000;
-    expect(((await get("/api/rewards")) as { weekPointsMicro: string }).weekPointsMicro).toBe("59805000000");
-    // Whoever signs in is given points over three weeks and two paid weeks.
-    // The address is a Solana one, and the sign-in is one message signed by that address's own key.
-    const { publicKey, privateKey } = generateKeyPairSync("ed25519");
-    const address = base58.encode(publicKey.export({ format: "der", type: "spki" }).subarray(12));
-    const post = async (route: string, body: unknown) => (await fetch(`http://127.0.0.1:${at}${route}`, { method: "POST", headers: { "content-type": "application/json", origin: `http://127.0.0.1:${at}`, "x-session": config.session }, body: JSON.stringify(body) })).json() as Promise<Record<string, string>>;
-    const code = await post("/api/rewards/code", { address });
-    const session = await post("/api/rewards/session", { nonce: code.nonce, signature: sign(null, Buffer.from(String(code.message), "utf8"), privateKey).toString("base64") });
-    expect(session.address).toBe(address);
-    const mine = (await get("/api/rewards/me", { "x-rewards-session": String(session.token) })) as { swaps: { week: string }[]; payouts: { txs: string[]; asset: string; decimals: number }[]; week: { pointsMicro: string } };
-    expect(new Set(mine.swaps.map((swap) => swap.week)).size).toBe(3);
-    expect(mine.payouts).toHaveLength(2);
-    // Each of the two sample weeks was paid in ZEC, with one transfer, named by a made-up Solana signature.
-    for (const payout of mine.payouts) {
-      expect(payout).toMatchObject({ asset: "ZEC", decimals: 8, txs: [expect.any(String)] });
-      expect(base58.decode(payout.txs[0]!)).toHaveLength(64);
-    }
-    expect(BigInt(mine.week.pointsMicro) > 0n).toBe(true);
-    expect(((await get("/api/rewards")) as { weeks: unknown[] }).weeks).toHaveLength(2);
+    // The Stats page has swaps to show, and no chain was asked about any of it: none can be reached in this test.
+    const stats = (await get("/api/stats")) as { totals: { swaps: number } };
+    expect(stats.totals.swaps).toBeGreaterThan(1000);
     // Started again on the same folder: the same six orders, not twelve.
     await new Promise<void>((resolve) => b.stop(resolve));
-    const again = start({ NODE_ENV: "development", PROVIDER_STUB: "true", PORT: port() }, undefined, () => clock);
+    const again = start({ NODE_ENV: "development", PROVIDER_STUB: "true", PORT: port() });
     const second = await listen(again);
     expect(((await (await fetch(`http://127.0.0.1:${second.port}/api/config`)).json()) as { sampleOrders: string[] }).sampleOrders).toEqual(config.sampleOrders);
     expect(fs.readdirSync(path.join(dir, "orders")).filter((name) => name.startsWith("SampleOrder"))).toHaveLength(6);
@@ -254,15 +218,15 @@ describe("start-up wiring", () => {
     const base = start({ NODE_ENV: "development", PROVIDER_STUB: "true", PORT: port(), TOKEN_ADDRESS: ADDR.sol });
     void base;
     const config = loadConfig({ NODE_ENV: "development", PROVIDER_STUB: "true", DATA_DIR: dir, TOKEN_ADDRESS: ADDR.sol });
-    expect(withSampleSettings(config)).toMatchObject({ tokenAddress: ADDR.sol, reserveAddress: SAMPLE.reserveAddress });
+    expect(withSampleSettings(config)).toMatchObject({ tokenAddress: ADDR.sol });
     const bare = loadConfig({ NODE_ENV: "development", PROVIDER_STUB: "true", DATA_DIR: dir });
-    expect(withSampleSettings(bare)).toMatchObject({ tokenAddress: SAMPLE.tokenAddress, reserveAddress: SAMPLE.reserveAddress });
+    expect(withSampleSettings(bare)).toMatchObject({ tokenAddress: SAMPLE.tokenAddress });
   });
 
   it("sample content never exists outside practice mode", async () => {
     // Asked for without practice mode, it refuses.
-    expect(() => seedSamples({ practice: false, dataDir: dir, store: null as never, rewards: null as never, now: 0 })).toThrow(/practice mode only/);
-    // A server that is not in practice mode has none: no sample orders, no token, no reserve, no points, no closed week.
+    expect(() => seedSamples({ practice: false, dataDir: dir, store: null as never, now: 0 })).toThrow(/practice mode only/);
+    // A server that is not in practice mode has none: no sample orders, no token, and no made-up swaps in its totals.
     for (const env of [{ NODE_ENV: "development", PORT: port() }, production({ PORT: port() })]) {
       const b = start(env);
       expect(b.practice, env.NODE_ENV).toBe(false);
@@ -270,17 +234,16 @@ describe("start-up wiring", () => {
       const config = (await (await fetch(`http://127.0.0.1:${at}/api/config`)).json()) as Record<string, unknown>;
       // (A production server in this test has no location database, and answers every visitor "not available": it says nothing at all.)
       if (env.NODE_ENV === "development") {
-        expect(config).toMatchObject({ practice: false, sampleOrders: [], tokenAddress: null, reserveAddress: null });
-        // No sample pool and no sample points: with no reserve wallet set there is no pool at all, and the week's total is nothing.
-        expect(await (await fetch(`http://127.0.0.1:${at}/api/rewards`)).json()).toMatchObject({ pool: null, weekPointsMicro: "0" });
+        expect(config).toMatchObject({ practice: false, sampleOrders: [], tokenAddress: null });
+        expect(await (await fetch(`http://127.0.0.1:${at}/api/stats`)).json()).toMatchObject({ totals: { swaps: 0 } });
       }
       else expect(JSON.stringify(config)).not.toMatch(/SampleOrder|sampleOrders":\["/);
       expect((await fetch(`http://127.0.0.1:${at}/api/orders/${sampleOrderId(1)}`)).status).not.toBe(200);
       await new Promise<void>((resolve) => b.stop(resolve));
     }
     expect(fs.readdirSync(path.join(dir, "orders"))).toEqual([]);
-    expect(fs.readdirSync(path.join(dir, "rewards", "entries"))).toEqual([]);
-    expect(fs.readdirSync(path.join(dir, "rewards", "weeks"))).toEqual([]);
+    expect(fs.existsSync(path.join(dir, "SAMPLE-CONTENT"))).toBe(false);
+    expect(fs.existsSync(path.join(dir, "stats", "sample-through"))).toBe(false);
     // The live site cannot be in practice mode at all.
     expect(() => start(production({ PROVIDER_STUB: "true" }))).toThrow(ConfigError);
     // And the one place that asks for sample content asks only when the practice provider is there.
@@ -294,14 +257,14 @@ describe("start-up wiring", () => {
   });
 
   it("a practice server leaves a note in its data folder, and the live site does not start on a folder that has one", () => {
-    const note = path.join(dir, "rewards", "SAMPLE-CONTENT");
+    const note = path.join(dir, "SAMPLE-CONTENT");
     expect(fs.existsSync(note)).toBe(false);
     expect(start({ NODE_ENV: "development", PROVIDER_STUB: "true", PORT: port() }).practice).toBe(true);
     expect(fs.readFileSync(note, "utf8")).toMatch(/This data folder holds practice content/);
     expect(fs.readdirSync(path.join(dir, "orders")).filter((name) => name.startsWith("SampleOrder"))).toHaveLength(6);
-    // The live site does not start on that folder: its orders, points and paid weeks are made up.
+    // The live site does not start on that folder: its orders and its totals are made up.
     expect(() => start(production({ PORT: port() }))).toThrow(ConfigError);
-    expect(() => start(production({ PORT: port() }))).toThrow(/DATA_DIR: this folder holds practice content \(it has a file rewards\/SAMPLE-CONTENT\)\. The live site does not start on it\. Give this server a data folder of its own\./);
+    expect(() => start(production({ PORT: port() }))).toThrow(/DATA_DIR: this folder holds practice content \(it has a file SAMPLE-CONTENT\)\. The live site does not start on it\. Give this server a data folder of its own\./);
     expect(lines.some((line) => line.includes("listening"))).toBe(false);
     // Plain development on a developer's own machine starts, and says in its log what the folder holds.
     expect(lines.some((line) => line.includes("practice_content_in_data_folder"))).toBe(false);
@@ -312,17 +275,20 @@ describe("start-up wiring", () => {
     // The note alone is enough to be refused, and without it the same folder is started on.
     const other = fs.mkdtempSync(path.join(os.tmpdir(), "saplingdex-boot-other-"));
     try {
+      fs.writeFileSync(path.join(other, "SAMPLE-CONTENT"), "");
+      expect(() => start(production({ DATA_DIR: other }))).toThrow(/holds practice content/);
+      fs.rmSync(path.join(other, "SAMPLE-CONTENT"));
+      expect(start(production({ DATA_DIR: other })).practice).toBe(false);
+      // A folder that an earlier practice server filled has the same note one folder down: it is refused all the same.
       fs.mkdirSync(path.join(other, "rewards"));
       fs.writeFileSync(path.join(other, "rewards", "SAMPLE-CONTENT"), "");
       expect(() => start(production({ DATA_DIR: other }))).toThrow(/holds practice content/);
-      fs.rmSync(path.join(other, "rewards", "SAMPLE-CONTENT"));
-      expect(start(production({ DATA_DIR: other })).practice).toBe(false);
     } finally {
       fs.rmSync(other, { recursive: true, force: true });
     }
   });
 
-  it("starts even when a stored order cannot be put to the points record: it says so in the log, and the other orders are still counted", () => {
+  it("starts even when a stored order cannot be counted: it says so in the log, and the other orders are still counted", () => {
     const orders = path.join(dir, "orders");
     fs.mkdirSync(orders, { recursive: true });
     const finished = "2026-10-06T10:00:00.000Z";
@@ -360,18 +326,84 @@ describe("start-up wiring", () => {
           ...extra,
         }),
       );
-    // Two delivered orders. The first is a record with no paying coin on it, as a fault might leave one: working out its entry fails.
+    // Two delivered orders. The first is a record with no paying coin on it, as a fault might leave one: counting it fails.
     put("A".repeat(27), ADDR.evm2, { from: undefined });
     put("B".repeat(27), ADDR.evm3);
     const b = start(production());
     expect(b.liveOrders).toBe(true);
-    const failures = lines.filter((line) => line.includes("points_not_recorded"));
+    const failures = lines.filter((line) => line.includes("stats_not_counted"));
     expect(failures).toHaveLength(1);
-    expect(JSON.parse(failures[0] ?? "{}")).toMatchObject({ level: "error", event: "points_not_recorded", error: "TypeError" });
+    expect(JSON.parse(failures[0] ?? "{}")).toMatchObject({ level: "error", event: "stats_not_counted", error: "TypeError" });
     // The order is named in the log by a hash, never by its ID.
     expect(failures[0]).not.toContain("A".repeat(27));
-    // The order after it was still put to the record.
-    expect(fs.readdirSync(path.join(dir, "rewards", "entries"))).toHaveLength(1);
+    // The order after it was still counted.
+    expect(JSON.parse(fs.readFileSync(path.join(orders, `${"B".repeat(27)}.json`), "utf8")).statsCounted).toBe(true);
+  });
+
+  it("starts on a data folder from before: a folder of records it no longer keeps is left as it is, and an order stored with a rewards address is read like any other", async () => {
+    // What such a folder holds besides its orders: a folder named "rewards", with files of its own in it.
+    const before = path.join(dir, "rewards");
+    fs.mkdirSync(path.join(before, "entries"), { recursive: true });
+    fs.mkdirSync(path.join(before, "weeks"), { recursive: true });
+    fs.writeFileSync(path.join(before, "entries", "abc.json"), JSON.stringify({ v: 2, address: ADDR.sol, volumeUsdMicro: "1250000000" }));
+    fs.writeFileSync(path.join(before, "weeks", "2026-W40.json"), JSON.stringify({ v: 1, week: "2026-W40", shares: [] }));
+    const kept = () => fs.readdirSync(before, { recursive: true }).map(String).sort().map((name) => [name, fs.statSync(path.join(before, name)).isFile() ? fs.readFileSync(path.join(before, name), "utf8") : null]);
+    const held = kept();
+    // And an order that is still open, stored with the field orders once carried.
+    const orders = path.join(dir, "orders");
+    fs.mkdirSync(orders, { recursive: true });
+    const made = new Date().toISOString();
+    const deadline = new Date(Date.now() + 3_600_000).toISOString();
+    const coin = (symbol: string, chain: string) => ({ id: `${chain}:${symbol}`, symbol, name: symbol, chain, decimals: 18, contract: null });
+    const id = "D".repeat(27);
+    fs.writeFileSync(
+      path.join(orders, `${id}.json`),
+      JSON.stringify({
+        v: 1,
+        id,
+        createdAt: made,
+        pay: "manual",
+        from: coin("ETH", "base"),
+        to: coin("BNB", "bsc"),
+        amountIn: "500000000000000000",
+        amountOut: "1",
+        minAmountOut: "1",
+        amountInUsd: "1250.00",
+        amountOutUsd: "1245.00",
+        slippageBps: 100,
+        timeEstimate: 30,
+        fees: { appBps: 0, appAmount: "0", providerBps: 20, providerAmount: "1" },
+        withdrawFee: null,
+        refundFee: null,
+        recipient: ADDR.evm2,
+        refundTo: ADDR.evm,
+        rewardsAddress: ADDR.sol,
+        depositAddress: ADDR.evm3,
+        depositMemo: null,
+        deadline,
+        termsVersion: "t",
+        screening: { result: "clear", listVersion: "v", checkedAt: made },
+        quoteResponse: null,
+        state: { status: "awaiting_deposit", upstreamStatus: "PENDING_DEPOSIT", statusSince: made, updatedAt: made, anchor: Date.now(), depositTxHash: null, depositForwarded: false, details: null, finishedAt: null, stopped: false, slowAlertSent: false },
+      }),
+    );
+    const b = start({ NODE_ENV: "development", PORT: port() });
+    const { port: at } = await listen(b);
+    expect(lines.filter((line) => line.includes('"level":"error"') && !line.includes("sanctions_refresh_failed"))).toEqual([]);
+    const reply = await fetch(`http://127.0.0.1:${at}/api/orders/${id}`);
+    expect(reply.status).toBe(200);
+    const order = (await reply.json()) as Record<string, unknown>;
+    expect(order).toMatchObject({ id, status: "awaiting_deposit", recipient: ADDR.evm2, refundTo: ADDR.evm });
+    expect(order).not.toHaveProperty("rewardsAddress");
+    expect(JSON.stringify(order)).not.toContain(ADDR.sol);
+    // Upkeep and the clean-up pass have run by now (both run as the server starts), and nothing of the folder was touched.
+    b.maintain();
+    await b.sweep();
+    expect(kept()).toEqual(held);
+    // The live site starts on it too: such a folder is no practice content.
+    await new Promise<void>((resolve) => b.stop(resolve));
+    expect(start(production({ PORT: port() })).practice).toBe(false);
+    expect(kept()).toEqual(held);
   });
 
   it("without it, it listens on every interface and serves the API", async () => {
@@ -462,8 +494,6 @@ describe("start-up wiring", () => {
     expect(() => start(production({ FEE_BPS: "40" }))).toThrow(/FEE_RECIPIENT: is required while FEE_BPS or FEE_BPS_PRIVATE is above 0/);
     expect(() => start(production({ FEE_BPS_PRIVATE: "20" }))).toThrow(/FEE_RECIPIENT/);
     expect(() => start(production({ PROVIDER_STUB: "true" }))).toThrow(/PROVIDER_STUB/);
-    // The coin rewards are paid in is named by its mint on Solana, or the server does not start: a word is refused, and so is a 0x address.
-    for (const bad of ["near", ADDR.evm]) expect(() => start(production({ REWARD_TOKEN_ADDRESS: bad })), bad).toThrow(/REWARD_TOKEN_ADDRESS: must be a Solana address/);
     expect(outbound).toEqual([]);
     expect(lines.some((l) => l.includes("listening"))).toBe(false);
   });

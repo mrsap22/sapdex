@@ -10,11 +10,9 @@ import fs from "node:fs";
 import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { base58 } from "@scure/base";
 import { afterEach, describe, expect, it } from "vitest";
 import { toChecksumAddress } from "../shared/addresses.ts";
 import { TERMS_VERSION, type CoinRef, type OrderStatus, type OrderView, type QuoteView, type StatsResponse } from "../shared/api.ts";
-import { weekOf } from "../shared/rewards.ts";
 import { createAlerts } from "../server/alerts.ts";
 import { boot, type Booted } from "../server/boot.ts";
 import { createLogger, hashId, silentLogger } from "../server/log.ts";
@@ -22,7 +20,6 @@ import { createSweeper } from "../server/maintenance.ts";
 import { createOneClick, type UpstreamResult } from "../server/oneclick.ts";
 import { EXPIRE_AFTER_DEADLINE_MS, GIVE_UP_AFTER_DEADLINE_MS, tracingOf } from "../server/poller.ts";
 import { LIMITS, MAX_UNPAID_PER_CLIENT, RateLimiter } from "../server/ratelimit.ts";
-import { createRewards } from "../server/rewards.ts";
 import { createStaticSanctions, type Sanctions } from "../server/sanctions.ts";
 import { createSettler } from "../server/settle.ts";
 import { createStats, type StatsFile } from "../server/stats.ts";
@@ -41,10 +38,8 @@ const sha = (text: string) => createHash("sha256").update(text).digest("hex");
 const made = (label: string, bytes: number) => sha(`ghost test ${label}`).slice(0, bytes * 2);
 const address = (label: string) => toChecksumAddress(`0x${made(label, 20)}`);
 const txHash = (label: string) => `0x${made(label, 32)}`;
-/** A made-up Solana address, which is what a rewards address is: 32 bytes written in base58. */
-const solAddress = (label: string) => base58.encode(createHash("sha256").update(`ghost test ${label}`).digest());
 /** Whose addresses a Ghost order of these tests is made with. */
-const WHO = { sender: address("sender"), recipient: address("recipient"), refundTo: address("refund"), rewards: solAddress("rewards") };
+const WHO = { sender: address("sender"), recipient: address("recipient"), refundTo: address("refund") };
 const SWAP = { recipient: WHO.recipient, refundTo: WHO.refundTo };
 /** The amount every order here pays, as a wallet sends it: 0.005 ETH. */
 const PAID = "0x11c37937e08000";
@@ -82,8 +77,6 @@ const orderFile = (dir: string, id: string) => path.join(dir, "orders", `${id}.j
 const indexFile = (dir: string, deposit: string) => path.join(dir, "by-deposit", sha(depositKey(deposit)));
 const goneDir = (dir: string) => path.join(dir, "ghost", "gone");
 const goneFile = (dir: string, id: string) => path.join(goneDir(dir), sha(id));
-const entriesDir = (dir: string) => path.join(dir, "rewards", "entries");
-const entryFile = (dir: string, id: string) => path.join(entriesDir(dir), `${sha(id)}.json`);
 const statsText = (dir: string) => fs.readFileSync(path.join(dir, "stats", "stats.json"), "utf8");
 const statsFile = (dir: string) => JSON.parse(statsText(dir)) as StatsFile;
 /** Every file under a folder: its path from the folder, and what it holds. */
@@ -180,7 +173,6 @@ function stored(n: number, extra: Partial<OrderRecord> = {}): OrderRecord {
     refundFee: null,
     recipient: address(`recipient ${n}`),
     refundTo: address(`refund ${n}`),
-    rewardsAddress: solAddress(`rewards ${n}`),
     confidentiality: "public",
     depositAddress: address(`deposit ${n}`),
     depositMemo: null,
@@ -251,7 +243,7 @@ describe("an order made in Ghost mode is marked, and is made exactly as any othe
     const list = createStaticSanctions([], { now: () => NOON });
     const sanctions: Sanctions = { available: list.available, version: list.version, screen: (addresses) => (screened.push(addresses.map(String)), list.screen(addresses)) };
     const h = await start({ sanctions });
-    const body = { ...SWAP, rewardsAddress: WHO.rewards };
+    const body = { ...SWAP };
     const plain = asOrder(await h.order(body));
     const marked = asOrder(await h.order({ ...body, ghost: true }));
 
@@ -264,7 +256,7 @@ describe("an order made in Ghost mode is marked, and is made exactly as any othe
     expect(JSON.stringify(h.tap.quotes)).not.toMatch(/ghost/i);
     expect(h.tap.quoteClasses).toEqual(["user", "order", "user", "order"]);
     // What was screened: every address of the order, both times.
-    expect(screened).toEqual([[WHO.recipient, WHO.refundTo, WHO.rewards], [WHO.recipient, WHO.refundTo, WHO.rewards]]);
+    expect(screened).toEqual([[WHO.recipient, WHO.refundTo], [WHO.recipient, WHO.refundTo]]);
     // What was stored: the same record, but for what the provider made up for each order, and the mark.
     const sameIn = (record: OrderRecord) => {
       const { id: _id, depositAddress: _deposit, quoteResponse: _quote, ghost: _ghost, ...rest } = record;
@@ -321,11 +313,9 @@ describe("an order made in Ghost mode is marked, and is made exactly as any othe
         },
       },
       { name: "a listed address", code: "blocked", options: { sanctions: createStaticSanctions([WHO.recipient], { now: () => NOON }) }, ask: (h, mark) => h.order({ ...SWAP, ...mark }) },
-      { name: "a listed rewards address", code: "blocked", options: { sanctions: createStaticSanctions([WHO.rewards], { now: () => NOON }) }, ask: (h, mark) => h.order({ ...SWAP, ...mark, rewardsAddress: WHO.rewards }) },
+      { name: "a listed refund address", code: "blocked", options: { sanctions: createStaticSanctions([WHO.refundTo], { now: () => NOON }) }, ask: (h, mark) => h.order({ ...SWAP, ...mark }) },
       { name: "no screening list", code: "try_later", options: { sanctions: createStaticSanctions([], { available: false }) }, ask: (h, mark) => h.order({ ...SWAP, ...mark }) },
       { name: "a full disk", code: "busy", options: { diskFull: () => true }, ask: (h, mark) => h.order({ ...SWAP, ...mark }) },
-      { name: "a rewards address that is none", code: "invalid_rewards", ask: (h, mark) => h.order({ ...SWAP, ...mark, rewardsAddress: "not an address", reviewed: { amountOut: "1", minAmountOut: "1", totalFeeBps: 0 } }) },
-      { name: "a rewards address that is not a Solana one", code: "invalid_rewards", ask: (h, mark) => h.order({ ...SWAP, ...mark, rewardsAddress: WHO.refundTo, reviewed: { amountOut: "1", minAmountOut: "1", totalFeeBps: 0 } }) },
       {
         name: "more orders in a minute than one visitor may make",
         code: "rate_limited",
@@ -902,7 +892,7 @@ describe("afterwards, a Ghost order's page is told only that it finished, and ho
     const neverWas = "A".repeat(27);
     const before = await h.get(`/api/orders/${neverWas}`, { ip: "198.51.100.50" });
 
-    const delivered = await ghostly(h, { rewardsAddress: WHO.rewards });
+    const delivered = await ghostly(h);
     const deposit = txHash("answered deposit");
     expect((await payByWallet(h, delivered, deposit)).status).toBe(200);
     await step(h, delivered.id, 5000);
@@ -925,7 +915,7 @@ describe("afterwards, a Ghost order's page is told only that it finished, and ho
       // The file that is kept holds that word and nothing else.
       expect(fs.readFileSync(goneFile(h.dataDir, order.id), "utf8"), ended).toBe(ended);
       // Nothing else of the order is in the answer: no amount, coin, address, hash or time.
-      for (const value of [order.id, order.depositAddress!, order.amountIn, order.amountOut, order.from.symbol, order.to.symbol, WHO.sender, WHO.recipient, WHO.refundTo, WHO.rewards, deposit, "cd".repeat(32), "2026"]) expect(carries(reply.text, value), `${ended} ${value}`).toBe(false);
+      for (const value of [order.id, order.depositAddress!, order.amountIn, order.amountOut, order.from.symbol, order.to.symbol, WHO.sender, WHO.recipient, WHO.refundTo, deposit, "cd".repeat(32), "2026"]) expect(carries(reply.text, value), `${ended} ${value}`).toBe(false);
     }
     expect(fs.readdirSync(goneDir(h.dataDir)).sort()).toEqual(endings.map(([order]) => sha(order.id)).sort());
     // That is not a guess at an ID, and is not counted as one: the page may ask as often as any page does.
@@ -1088,34 +1078,23 @@ describe("afterwards, a Ghost order's page is told only that it finished, and ho
   });
 });
 
-describe("points are counted before the record goes; with no rewards address nothing at all is kept", () => {
-  it("named a rewards address: its entry is on disk, and the swap is in the totals on disk, before the record is deleted; the entry holds what any swap's holds", async () => {
+describe("the swap is counted before the record goes, and nothing else of the order is kept", () => {
+  it("the swap is in the totals on disk before the record is deleted", async () => {
     const h = await start();
-    const order = await ghostly(h, { rewardsAddress: WHO.rewards });
+    const order = await ghostly(h);
     // What is on disk at the moment the record is asked to go.
     const real = h.store.wipe.bind(h.store);
-    const seen: Array<{ counted: number; entry: boolean; record: boolean }> = [];
+    const seen: Array<{ counted: number; record: boolean }> = [];
     h.store.wipe = (id) => {
-      seen.push({ counted: statsFile(h.dataDir).swaps, entry: fs.existsSync(entryFile(h.dataDir, id)), record: fs.existsSync(orderFile(h.dataDir, id)) });
+      seen.push({ counted: statsFile(h.dataDir).swaps, record: fs.existsSync(orderFile(h.dataDir, id)) });
       return real(id);
     };
     await deliver(h, order);
-    expect(seen).toEqual([{ counted: 1, entry: true, record: true }]);
+    expect(seen).toEqual([{ counted: 1, record: true }]);
     expect(fs.existsSync(orderFile(h.dataDir, order.id))).toBe(false);
-
-    const delivered = NOON + 25_000;
-    const entry = { v: 2, order: sha(order.id), address: WHO.rewards, week: weekOf(delivered), at: iso(delivered), volumeUsdMicro: "12500000", reasons: [], from: { symbol: "ETH", chain: "base" }, to: { symbol: "USDC", chain: "arb" } };
-    expect(h.rewards.entriesFor(WHO.rewards)).toEqual([entry]);
-    expect(fs.readdirSync(entriesDir(h.dataDir))).toEqual([`${sha(order.id)}.json`]);
-    expect(JSON.parse(fs.readFileSync(entryFile(h.dataDir, order.id), "utf8"))).toEqual(entry);
-    // The entry names the order by its fingerprint only, and holds no other address of the swap.
-    const text = fs.readFileSync(entryFile(h.dataDir, order.id), "utf8");
-    for (const value of [order.id, order.depositAddress!, WHO.sender, WHO.recipient, WHO.refundTo]) expect(carries(text, value), value).toBe(false);
-    // Read again from the folder, as at a start, the points are the same.
-    expect(createRewards(h.dataDir).entriesFor(WHO.rewards)).toEqual([entry]);
   });
 
-  it("named none: no entry is written, and nothing in the data folder names the order, its addresses or its transactions; a refunded Ghost order adds no points either", async () => {
+  it("nothing in the data folder names the order, its addresses or its transactions, whether it was delivered or refunded", async () => {
     const h = await start({ limits: { orderCreate: ROOMY, orderPerRecipient: ROOMY } });
     const order = await ghostly(h);
     const record = h.store.get(order.id)!;
@@ -1127,16 +1106,14 @@ describe("points are counted before the record goes; with no rewards address not
     expect(h.store.get(order.id)!.state.details?.originTxs[0]?.hash).toBe(deposit);
     await step(h, order.id, 15_000);
     expect(statusOf(h, order.id)).toBeNull();
-    const refunded = await ghostly(h, { rewardsAddress: WHO.rewards }, "198.51.100.2");
+    const refunded = await ghostly(h, {}, "198.51.100.2");
     await refund(h, refunded);
 
-    expect(fs.readdirSync(entriesDir(h.dataDir))).toEqual([]);
-    expect(h.rewards.entriesFor(WHO.rewards)).toEqual([]);
     // Every file the server keeps, by its name and by what it holds.
     const files = everyFile(h.dataDir);
     expect(files.map((file) => file.name).sort()).toEqual([path.join("cache", "tokens.json"), path.join("ghost", "gone", sha(order.id)), path.join("ghost", "gone", sha(refunded.id)), path.join("stats", "stats.json")].sort());
     const quote = record.quoteResponse as { signature: string; correlationId: string };
-    const never = [order.id, refunded.id, order.depositAddress!, refunded.depositAddress!, WHO.sender, WHO.recipient, WHO.refundTo, WHO.rewards, deposit, delivery, quote.signature, quote.correlationId, sha(depositKey(order.depositAddress!)), hashId(order.id)];
+    const never = [order.id, refunded.id, order.depositAddress!, refunded.depositAddress!, WHO.sender, WHO.recipient, WHO.refundTo, deposit, delivery, quote.signature, quote.correlationId, sha(depositKey(order.depositAddress!)), hashId(order.id)];
     for (const file of files) {
       // The one thing kept is the fingerprint, which is the file's name; inside it is the one word, and nothing else.
       const fingerprint = file.name.startsWith(path.join("ghost", "gone"));
@@ -1185,7 +1162,7 @@ describe("no log line and no alert carries an address, a transaction or the ID o
   it("from the quote to delivered, and to refunded, through every fault on the way: an order is named by its hashed ID and by nothing else", async () => {
     const payer = address("listed payer");
     const h = await start({ limits: { orderCreate: ROOMY, orderPerRecipient: ROOMY }, sanctions: createStaticSanctions([payer], { now: () => NOON }) });
-    const secrets: string[] = [WHO.sender, WHO.recipient, WHO.refundTo, WHO.rewards, payer];
+    const secrets: string[] = [WHO.sender, WHO.recipient, WHO.refundTo, payer];
     const ids: string[] = [];
     const cids: string[] = [];
     const noted = (order: OrderView) => {
@@ -1201,7 +1178,7 @@ describe("no log line and no alert carries an address, a transaction or the ID o
 
     // One order from the quote to delivered: the person looks at its page, a first transaction is named that a listed wallet
     // paid (refused, and the operator told), then the real one. The provider answers badly three ways before it reports the swap.
-    const first = noted(await ghostly(h, { rewardsAddress: WHO.rewards }));
+    const first = noted(await ghostly(h));
     await h.get(`/api/orders/${first.id}`);
     const [listedTx, deposit] = [txHash("log listed"), txHash("log deposit")];
     secrets.push(listedTx, deposit, "cd".repeat(32));
@@ -1393,8 +1370,8 @@ describe("no log line and no alert carries an address, a transaction or the ID o
 });
 
 describe("a stop or a fault between the steps of a Ghost order's ending neither counts it twice nor leaves its record behind", () => {
-  /** A folder as a stop at some point of the ending would leave it: a delivered Ghost order that named a rewards address, and an ordinary one beside it. */
-  function stoppedAt(point: "saved" | "counted" | "points written" | "fingerprint written") {
+  /** A folder as a stop at some point of the ending would leave it: a delivered Ghost order, and an ordinary one beside it. */
+  function stoppedAt(point: "saved" | "counted" | "fingerprint written") {
     const dir = tempDir();
     const ghost = stored(1, { ghost: true });
     const beside = stored(2);
@@ -1406,21 +1383,17 @@ describe("a stop or a fault between the steps of a Ghost order's ending neither 
     }
     // The ordinary order was dealt with whole before the stop.
     const stats = createStats(dir, { now: () => NOON });
-    const rewards = createRewards(dir);
     stats.recordDelivered(store.get(beside.id)!, () => store.markCounted(beside.id));
-    rewards.recordDelivered(store.get(beside.id)!);
     if (point !== "saved") expect(stats.recordDelivered(store.get(ghost.id)!, () => store.markCounted(ghost.id))).toBe(true);
-    if (point === "points written" || point === "fingerprint written") expect(rewards.recordDelivered(store.get(ghost.id)!)).not.toBeNull();
     if (point === "fingerprint written") fs.writeFileSync(goneFile(dir, ghost.id), "delivered");
     return { dir, ghost, beside };
   }
 
-  for (const point of ["saved", "counted", "points written", "fingerprint written"] as const) {
+  for (const point of ["saved", "counted", "fingerprint written"] as const) {
     it(`stopped once the order was ${point}, and no further: the next start finishes the job, and a start after that changes nothing`, () => {
       const { dir, ghost, beside } = stoppedAt(point);
       expect(fs.existsSync(orderFile(dir, ghost.id))).toBe(true);
       expect(statsFile(dir).swaps).toBe(point === "saved" ? 1 : 2);
-      expect(fs.readdirSync(entriesDir(dir))).toHaveLength(point === "saved" || point === "counted" ? 1 : 2);
 
       const lines: string[] = [];
       restarted(dir, () => NOON + MINUTE, lines);
@@ -1428,9 +1401,6 @@ describe("a stop or a fault between the steps of a Ghost order's ending neither 
         // Counted once: two swaps in all, each with its volume, and one row, which is the ordinary order's.
         expect(statsFile(dir)).toMatchObject({ swaps: 2, volumeMicro: "501000000", deliveriesTimed: 2, chains: { base: { swaps: 2, volumeMicro: "501000000" } }, coins: [{ symbol: "ETH", chain: "base", volumeMicro: "501000000" }], received: [{ symbol: "USDC", chain: "arb", volumeMicro: "501000000" }] });
         expect(statsFile(dir).rows.map((row) => row.amount)).toEqual([beside.amountIn]);
-        // Its points written once.
-        expect(fs.readdirSync(entriesDir(dir)).sort()).toEqual([`${sha(ghost.id)}.json`, `${sha(beside.id)}.json`].sort());
-        expect(createRewards(dir).entriesFor(ghost.rewardsAddress!)).toHaveLength(1);
         // Its record gone, with its entry in the index, and its fingerprint left.
         expect(fs.readdirSync(path.join(dir, "orders"))).toEqual([`${beside.id}.json`]);
         expect(fs.readdirSync(path.join(dir, "by-deposit"))).toEqual([sha(depositKey(beside.depositAddress))]);
@@ -1463,15 +1433,13 @@ describe("a stop or a fault between the steps of a Ghost order's ending neither 
       expect(statsFile(dir)).toMatchObject({ swaps: 0, volumeMicro: "0", rows: [] });
       expect(fs.readdirSync(path.join(dir, "orders"))).toEqual([`${beside.id}.json`]);
       expect(fs.readdirSync(goneDir(dir))).toEqual([sha(ghost.id)]);
-      // Its points were written all the same.
-      expect(createRewards(dir).entriesFor(ghost.rewardsAddress!)).toHaveLength(1);
     }
   });
 
-  it("a step that fails while the server keeps running leaves the record where it is, and the next clean-up pass finishes the job: counted once, points written once, record gone", async () => {
-    for (const step of ["count", "totals file", "points", "deletion"] as const) {
+  it("a step that fails while the server keeps running leaves the record where it is, and the next clean-up pass finishes the job: counted once, record gone", async () => {
+    for (const step of ["count", "totals file", "deletion"] as const) {
       const h = await start();
-      const order = await ghostly(h, { rewardsAddress: WHO.rewards });
+      const order = await ghostly(h);
       const broken = new Error("the disk would not take the write");
       const mend: Array<() => void> = [];
       if (step === "count") {
@@ -1486,13 +1454,6 @@ describe("a stop or a fault between the steps of a Ghost order's ending neither 
         fs.rmSync(file, { force: true });
         fs.mkdirSync(file);
         mend.push(() => fs.rmdirSync(file));
-      } else if (step === "points") {
-        const real = h.rewards.recordDelivered.bind(h.rewards);
-        h.rewards.recordDelivered = (record) => {
-          if (record.state.status !== "delivered") return real(record);
-          throw broken;
-        };
-        mend.push(() => (h.rewards.recordDelivered = real));
       } else {
         const real = h.store.wipe.bind(h.store);
         h.store.wipe = () => {
@@ -1506,7 +1467,7 @@ describe("a stop or a fault between the steps of a Ghost order's ending neither 
       expect(fs.existsSync(orderFile(h.dataDir, order.id)), step).toBe(true);
       expect(fs.existsSync(goneFile(h.dataDir, order.id)), step).toBe(false);
       expect((await h.get(`/api/orders/${order.id}`)).body, step).toMatchObject({ id: order.id, status: "delivered", ghost: true });
-      const event = step === "count" || step === "totals file" ? "stats_not_counted" : step === "points" ? "points_not_recorded" : "record_not_deleted";
+      const event = step === "count" || step === "totals file" ? "stats_not_counted" : "record_not_deleted";
       const logged = () => h.logs.map((line) => JSON.parse(line) as Record<string, unknown>).filter((line) => line.event === event);
       expect(logged(), step).toEqual([expect.objectContaining({ level: "error", order: hashId(order.id), error: "Error" })]);
       // While the fault lasts, a clean-up pass tries again, says so again, and deletes nothing.
@@ -1523,8 +1484,6 @@ describe("a stop or a fault between the steps of a Ghost order's ending neither 
       expect((await h.get(`/api/orders/${order.id}`)).body, step).toEqual(gone("delivered"));
       expect(statsFile(h.dataDir), step).toMatchObject({ swaps: 1, volumeMicro: "12500000", rows: [] });
       expect(((await h.get("/api/stats")).body as StatsResponse).totals.swaps, step).toBe(1);
-      expect(h.rewards.entriesFor(WHO.rewards), step).toHaveLength(1);
-      expect(fs.readdirSync(entriesDir(h.dataDir)), step).toEqual([`${sha(order.id)}.json`]);
       // And nothing is left to try: a further pass changes nothing and says nothing.
       const said = h.logs.length;
       await h.sweep();
@@ -1543,7 +1502,7 @@ describe("a stop or a fault between the steps of a Ghost order's ending neither 
     // The start, with the same parts the server starts with, and a look at the disk each time a record is asked to go.
     const store: OrderStore = createOrderStore(dir, { now: () => NOON });
     const stats = createStats(dir, { now: () => NOON });
-    const settler = createSettler({ store, stats, rewards: createRewards(dir), log: silentLogger });
+    const settler = createSettler({ store, stats, log: silentLogger });
     const real = store.wipe.bind(store);
     const seen: number[] = [];
     store.wipe = (id) => {
@@ -1561,11 +1520,11 @@ describe("a stop or a fault between the steps of a Ghost order's ending neither 
 });
 
 describe("an ordinary order beside a Ghost one is untouched by all of it", () => {
-  it("it is listed, its record is kept its 30 days, it is found by its ID and by its deposit address, and its points are written, while the Ghost order beside it is gone", async () => {
+  it("it is listed, its record is kept its 30 days, it is found by its ID and by its deposit address, while the Ghost order beside it is gone", async () => {
     // The Stats page is off here, so that a delivered order is still found from its deposit address.
     const h = await start({ env: { STATS_PAGE: "off" }, limits: { orderCreate: ROOMY, orderPerRecipient: ROOMY } });
-    const ghost = await ghostly(h, { rewardsAddress: WHO.rewards });
-    const plain = await plainly(h, { rewardsAddress: ADDR.sol }, "198.51.100.2");
+    const ghost = await ghostly(h);
+    const plain = await plainly(h, {}, "198.51.100.2");
     await deliver(h, ghost);
     await deliver(h, plain);
     const whole = async () => {
@@ -1577,11 +1536,10 @@ describe("an ordinary order beside a Ghost one is untouched by all of it", () =>
       expect(fs.readFileSync(indexFile(h.dataDir, plain.depositAddress!), "utf8")).toBe(plain.id);
       const read = await h.get(`/api/orders/${plain.id}`);
       expect(read.status).toBe(200);
-      expect(read.body).toMatchObject({ id: plain.id, status: "delivered", recipient: WHO.recipient, rewardsAddress: ADDR.sol });
+      expect(read.body).toMatchObject({ id: plain.id, status: "delivered", recipient: WHO.recipient });
       expect("ghost" in read.body).toBe(false);
       expect((await h.post("/api/track", { depositAddress: plain.depositAddress }, { session })).body).toEqual({ id: plain.id });
       expect(h.stats.view().feed.map((row) => row.amount)).toEqual([plain.amountIn]);
-      expect(h.rewards.entriesFor(ADDR.sol)).toHaveLength(1);
     };
     await whole();
     expect(statusOf(h, ghost.id)).toBeNull();
@@ -1600,9 +1558,7 @@ describe("an ordinary order beside a Ghost one is untouched by all of it", () =>
     const gone = await h.get(`/api/orders/${plain.id}`);
     expect([gone.status, gone.text]).toEqual([404, NEVER]);
     expect(fs.readdirSync(goneDir(h.dataDir))).toEqual([]);
-    // Its points and both swaps in the totals stay.
-    expect(h.rewards.entriesFor(ADDR.sol)).toHaveLength(1);
-    expect(h.rewards.entriesFor(WHO.rewards)).toHaveLength(1);
+    // Both swaps in the totals stay.
     expect(h.stats.view().totals.swaps).toBe(2);
   });
 });

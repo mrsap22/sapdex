@@ -36,7 +36,7 @@ const CAUGHT = [
 const PLAIN = [
   "The server sets the fee and the deposit address.",
   "Spellings checked against the real database on 8 Oct 2026.",
-  "a sample token and reserve where the operator has set none",
+  "a sample token where the operator has set none",
   "Each mark belongs to its owner.",
   "the review sheet shows the address in its standard spelling",
   "the Docs page at /docs/fees",
@@ -73,7 +73,7 @@ describe("what is published says what the product does, and nothing of how it ca
   it("holds in every text file of the repository", () => {
     const files = PLACES.flatMap((place) => walk(path.resolve(place)));
     // The walk reaches what it should: the pages of words, the code, the scripts, the tests (this one among them) and the workflow.
-    for (const expected of ["README.md", ".env.example", "web/index.html", "web/vite.config.ts", "server/app.ts", "shared/rewards.ts", "web/src/styles/tokens.css", "scripts/mutation-check.ts", "test/repo-words.test.ts", ".github/workflows/ci.yml"]) {
+    for (const expected of ["README.md", ".env.example", "web/index.html", "web/vite.config.ts", "server/app.ts", "shared/api.ts", "web/src/styles/tokens.css", "scripts/mutation-check.ts", "test/repo-words.test.ts", ".github/workflows/ci.yml"]) {
       expect(files.map(name), expected).toContain(expected);
     }
     expect(files.length).toBeGreaterThan(150);

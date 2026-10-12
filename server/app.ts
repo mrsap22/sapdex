@@ -4,7 +4,7 @@
 import { createHash } from "node:crypto";
 import type { IncomingMessage, RequestListener, ServerResponse } from "node:http";
 import { isValidTxHash, sameAddress } from "../shared/addresses.ts";
-import { isDigits, parseRaw, USD_SCALE, usdScaled, worseByMoreThan } from "../shared/amounts.ts";
+import { isDigits, parseRaw, worseByMoreThan } from "../shared/amounts.ts";
 import {
   isEndState,
   isRouting,
@@ -21,7 +21,6 @@ import {
 } from "../shared/api.ts";
 import { DEPOSIT_CLOSE_MS, explorerTxUrl, isWalletChain, WALLET_CHAINS, type WalletChain } from "../shared/chains.ts";
 import { gasSizeFor, isGasAmount } from "../shared/gas.ts";
-import { MICRO, RESERVE_ASSET, type PoolView, type RewardsPublic } from "../shared/rewards.ts";
 import type { AccessLog } from "./log.ts";
 import type { Alerts } from "./alerts.ts";
 import type { Config } from "./config.ts";
@@ -35,11 +34,8 @@ import { EXPIRE_AFTER_DEADLINE_MS, tracingOf, type Poller } from "./poller.ts";
 import { buildSentQuote, enforceUsdCap, mapRejection, parseSwapInput, privateUnavailable, refusesPrivate, toQuoteView, type QuoteInput } from "./quotes.ts";
 import { MAX_HASH_SUBMISSIONS, MAX_UNPAID_PER_CLIENT, MAX_UNPAID_PER_NETWORK, openOrderCap, type LimitName, type Limiters } from "./ratelimit.ts";
 import { decodeErc20Transfer, decodeTransferLog, hexToBigInt, parseProxyBody, type Rpc } from "./rpc.ts";
-import { rewardsAddressOf, signedBy, type Rewards, type SignIn } from "./rewards.ts";
-import { reserveHolds } from "./rewards-tools.ts";
-import { SAMPLE, type Samples } from "./sample.ts";
+import type { Samples } from "./sample.ts";
 import type { Sanctions } from "./sanctions.ts";
-import type { Sapling } from "./sapling.ts";
 import type { SessionIssuer } from "./session.ts";
 import type { StaticSite } from "./static.ts";
 import type { Stats } from "./stats.ts";
@@ -62,13 +58,8 @@ export interface AppDeps {
   rpc: Rpc;
   limiters: Limiters;
   sessions: SessionIssuer;
-  /** The record of points, and the sign-in of the Rewards page. */
-  rewards: Rewards;
-  signIn: SignIn;
   /** The site's own totals, for the Stats page. */
   stats: Stats;
-  /** What Sapling says of the site's coin, read by this server. Null where no coin is set: there is then no token page and no route for it. */
-  sapling?: Sapling | null;
   site: StaticSite | null;
   now: () => number;
   /**
@@ -95,13 +86,6 @@ export interface AppDeps {
 
 /** A live quote may be this much worse than the reviewed one before the person must confirm again. */
 export const PRICE_TOLERANCE_BPS = 100;
-
-/** The reserve wallet's balances are read from the chain at most this often, whoever asks. */
-export const POOL_READ_EVERY_MS = 60_000;
-/** How long the last good reading of the pool is shown while Solana cannot be read. After that there is no figure. */
-const POOL_STALE_MS = 10 * 60_000;
-/** From a US dollar value scaled by 10^18 to millionths of a dollar. */
-const USD_TO_MICRO = USD_SCALE / MICRO;
 
 
 interface Ctx {
@@ -173,7 +157,6 @@ export function toOrderView(record: OrderRecord, now: number): OrderView {
     refundFee: record.refundFee,
     recipient: record.recipient,
     refundTo: record.refundTo,
-    rewardsAddress: record.rewardsAddress ?? null,
     // As the order was made. One stored before the level was kept has none, and was public.
     routing: routingOf(record.confidentiality),
     // The deposit address is only ever read from the stored order.
@@ -228,22 +211,8 @@ function reviewedOf(reviewed: unknown): Reviewed | null {
  */
 const GAS_NOT_OFFERED: ReadonlySet<ErrorCode> = new Set<ErrorCode>(["min_usd", "amount_too_low", "no_route", "private_unavailable", "blocked", "try_later", "invalid_recipient", "invalid_refund"]);
 
-/**
- * The host a sign-in message names, or null when no message may be given. Where SITE_URL itself was
- * set, it is that address and nothing a request says. Otherwise (the live site's address being only
- * the built-in one, or none) it is the host the request was made to, and only when the page that
- * asked is on that same host: so the same build signs in on its own address and on a preview one,
- * and never hands another site a message that names it.
- */
-export function signInHost(config: Pick<Config, "siteUrl" | "siteUrlSet">, hostHeader: unknown, originHeader: unknown): string | null {
-  if (config.siteUrlSet && config.siteUrl !== null) return new URL(config.siteUrl).host;
-  const host = typeof hostHeader === "string" ? hostHeader.slice(0, 100) : "";
-  const origin = typeof originHeader === "string" && URL.canParse(originHeader) ? new URL(originHeader).host : null;
-  return host !== "" && origin !== null && origin === host ? host : null;
-}
-
 export function createApp(deps: AppDeps): RequestListener {
-  const { config, log, accessLog, alerts, geo, sanctions, oneclick, tokens, store, poller, rpc, limiters, sessions, rewards, signIn, stats, site, now } = deps;
+  const { config, log, accessLog, alerts, geo, sanctions, oneclick, tokens, store, poller, rpc, limiters, sessions, stats, site, now } = deps;
   const production = config.env === "production";
   // The provider answers private quotes only to a partner with a key. Two things are said in the log
   // once, as the server starts, so that neither is a puzzle later.
@@ -498,46 +467,6 @@ export function createApp(deps: AppDeps): RequestListener {
     limiters.depositPerOrder.forget(id);
   });
 
-  /**
-   * The current pool, for the Rewards page: what the reserve wallet holds of the coin rewards are
-   * paid in (ZEC on Solana, by the reward coin's mint), and what that comes to in US
-   * dollars. Nothing else the wallet holds is part of it. The chain is read at most once in a
-   * minute, and every visitor is given that one reading: a request that arrives while a reading is
-   * under way waits for it, and is answered from it. A read that fails changes nothing, and is not
-   * tried again within the minute: the last good figures stand, with the time they were read, for
-   * ten minutes. Until a read has worked, and once the last good one is older than that, there is no
-   * figure at all, and the page says that the pool cannot be read. Nothing is ever made up.
-   *
-   * The dollar value is worked out at the price the coin list holds for this very coin on Solana,
-   * in whole numbers, rounded down to a millionth of a dollar. Where the list has no price
-   * for it just now there is no dollar value, and the amount is shown without one.
-   */
-  let poolSeen: PoolView | null = null;
-  let poolTriedAt: number | null = null;
-  let poolReading: Promise<void> | null = null;
-  async function currentPool(reserve: string): Promise<PoolView> {
-    if (poolReading !== null || poolTriedAt === null || now() - poolTriedAt >= POOL_READ_EVERY_MS) {
-      // One reading at a time: requests that arrive while it is under way wait for the same one.
-      poolReading ??= (async () => {
-        poolTriedAt = now();
-        // A practice server's made-up reserve holds a made-up amount; the chain is not asked about it.
-        const samples = deps.practice?.samples;
-        const held = samples !== undefined && reserve === SAMPLE.reserveAddress ? { amount: samples.pool, decimals: RESERVE_ASSET.decimals } : await reserveHolds(rpc, reserve, config.rewardTokenAddress);
-        if (held === null) return;
-        // A Solana mint has one spelling: it is matched letter for letter.
-        const price = (await tokens.snapshot())?.tokens.find((item) => item.chain === RESERVE_ASSET.chain && item.contract === config.rewardTokenAddress)?.priceScaled ?? null;
-        poolSeen = { address: reserve, amount: held.amount.toString(), decimals: held.decimals, usdMicro: price === null ? null : (usdScaled(held.amount, held.decimals, price) / USD_TO_MICRO).toString(), readAt: new Date(now()).toISOString() };
-      })().finally(() => {
-        poolReading = null;
-      });
-      await poolReading;
-    }
-    // A figure that could not be confirmed for ten minutes is no longer the current pool: it is not shown as if it were.
-    // There is then no figure at all, and the page says that the pool cannot be read.
-    const fresh = poolSeen !== null && poolSeen.readAt !== null && now() - Date.parse(poolSeen.readAt) <= POOL_STALE_MS;
-    return fresh && poolSeen !== null ? poolSeen : { address: reserve, amount: null, decimals: RESERVE_ASSET.decimals, usdMicro: null, readAt: null };
-  }
-
   const statsRoute: Route = {
     method: "GET",
     pattern: /^\/api\/stats$/,
@@ -550,23 +479,6 @@ export function createApp(deps: AppDeps): RequestListener {
       return { status: 200, body: stats.view() };
     },
   };
-
-  // What the token's page says that only Sapling knows: how Sapling splits its trade fee, and whether
-  // this coin's planter's share goes to the pool's wallet. Read from Sapling by this server, kept a
-  // few minutes, and answered from here: the page itself asks Sapling nothing. Where no coin is set
-  // this is no route at all.
-  const sapling = deps.sapling ?? null;
-  const tokenRoute: Route | null =
-    sapling === null
-      ? null
-      : {
-          method: "GET",
-          pattern: /^\/api\/token$/,
-          name: "token_facts",
-          cheapRead: true,
-          limit: "light",
-          handler: async () => ({ status: 200, body: await sapling.facts() }),
-        };
 
   const routes: Route[] = [
     {
@@ -585,7 +497,6 @@ export function createApp(deps: AppDeps): RequestListener {
           privacyMode: config.privacyMode,
           testPages: !production,
           tokenAddress: config.tokenAddress,
-          reserveAddress: config.reserveAddress,
           // Only a practice server has any: orders made up so that the list of recent orders can be seen full.
           sampleOrders: deps.practice?.samples?.orderIds ?? [],
           zecShielded: config.zecShielded,
@@ -740,13 +651,6 @@ export function createApp(deps: AppDeps): RequestListener {
         const snapshot = await snapshotOrFail();
         // The routing level comes from the server's setting, never from the request.
         const input = parseSwapInput(body, snapshot.byId, true, config.privacyMode);
-        // Where this swap's points go. The person chooses it, as they choose the receiving address;
-        // the points themselves are only ever counted on this server, from the order as it is stored.
-        let rewardsAddress: string | null = null;
-        if (body.rewardsAddress !== undefined && body.rewardsAddress !== null && body.rewardsAddress !== "") {
-          rewardsAddress = rewardsAddressOf(body.rewardsAddress);
-          if (rewardsAddress === null) throw new HttpError(400, "invalid_rewards", "Enter a Solana address for this swap's points, or leave the field empty.");
-        }
 
         let requestKey: string | null = null;
         // What this request asks for, so a retry key cannot be reused for something else. The routing
@@ -755,7 +659,7 @@ export function createApp(deps: AppDeps): RequestListener {
         // with it, by its amount (or that none was): a retry never answers a request for a swap with
         // gas with a swap that was asked for without, or the other way round.
         const fingerprint = createHash("sha256")
-          .update(JSON.stringify([input.from.id, input.to.id, input.amount.toString(), gas === null ? null : gas.amount.toString(), input.pay, input.recipient, input.refundTo, input.slippageBps, rewardsAddress, input.confidentiality, ghost]))
+          .update(JSON.stringify([input.from.id, input.to.id, input.amount.toString(), gas === null ? null : gas.amount.toString(), input.pay, input.recipient, input.refundTo, input.slippageBps, input.confidentiality, ghost]))
           .digest("base64url");
         if (body.requestId !== undefined) {
           if (typeof body.requestId !== "string" || !/^[A-Za-z0-9_-]{22,64}$/.test(body.requestId)) throw new HttpError(400, "bad_request", "The request could not be read.");
@@ -792,7 +696,7 @@ export function createApp(deps: AppDeps): RequestListener {
           if (deps.diskFull?.()) throw new HttpError(503, "busy", "We're at capacity right now. Try again shortly.");
 
           // Screen every address before anything is created at the provider.
-          const screening = sanctions.screen([input.recipient, input.refundTo, rewardsAddress]);
+          const screening = sanctions.screen([input.recipient, input.refundTo]);
           if (!screening.ok) {
             ctx.logScreening = screening.reason;
             if (screening.reason === "unavailable") throw new HttpError(503, "try_later", "Try again shortly.");
@@ -896,7 +800,6 @@ export function createApp(deps: AppDeps): RequestListener {
               refundFee: verified.refundFee,
               recipient: input.recipient,
               refundTo: input.refundTo,
-              rewardsAddress,
               // The level the verified quote was asked for with. Kept with the order, and never changed.
               confidentiality: verified.confidentiality,
               depositAddress: verified.depositAddress,
@@ -1160,105 +1063,10 @@ export function createApp(deps: AppDeps): RequestListener {
         return { status: 200, body: viewOf(latest, now()) };
       },
     },
-    {
-      // What anyone may see of the rewards: this week's dates, about how many points it has in all (as
-      // they stood when the quarter of an hour began, rounded), the totals of the weeks already paid,
-      // and the current pool. No address but the reserve wallet's own, and no figure of any one
-      // address or any one swap: there is no list and no ranking to be made from it.
-      method: "GET",
-      pattern: /^\/api\/rewards$/,
-      name: "rewards_summary",
-      cheapRead: true,
-      limit: "light",
-      handler: async () => {
-        const t = now();
-        // On a practice server the week has sample points in it before anyone signs in.
-        deps.practice?.samples?.ensureWeek(t);
-        const body: RewardsPublic = {
-          ...rewards.summary(t),
-          pool: config.reserveAddress === null ? null : await currentPool(config.reserveAddress),
-          serverNow: new Date(t).toISOString(),
-        };
-        return { status: 200, body };
-      },
-    },
-    {
-      // The first half of signing in: a one-time code for an address, inside the plain message the wallet is to sign.
-      method: "POST",
-      pattern: /^\/api\/rewards\/code$/,
-      name: "rewards_code",
-      limit: "rewardsNonce",
-      maxBody: 256,
-      needsOrigin: true,
-      needsSession: true,
-      handler: async (ctx, _match, body) => {
-        // The visitor's own limits come first (the route's, by address, and this one, by wider network):
-        // a request they refuse must not use up what everyone shares.
-        if (ctx.wideKey !== null) limited("rewardsNonceWide", ctx.wideKey);
-        limited("rewardsNonceGlobal", "all");
-        const address = rewardsAddressOf(isRecord(body) ? body.address : undefined);
-        if (address === null) throw new HttpError(400, "invalid_rewards", "That is not a Solana address.");
-        // The message names this site, so that a wallet can warn when another site asks for it: the
-        // site's own address where one is set. Where none is, it is the host this request was made to,
-        // and only when the page that asked is on that same host. A name that reaches the server only
-        // in a forwarding header is not taken: a program can write that header as it likes, and
-        // another site could then be handed a message that names itself. (Behind a proxy that changes
-        // the host, set SITE_URL.)
-        const host = signInHost(config, ctx.req.headers.host, ctx.req.headers.origin);
-        if (host === null) throw new HttpError(403, "origin", "Signing in is not available from this address.");
-        const challenge = signIn.challenge(address, host, now());
-        // The parts go with the message, so that the page can put it together itself and see that
-        // it is the one for this site and this address before the wallet is opened.
-        return { status: 200, body: { message: challenge.message, nonce: challenge.nonce, issuedAt: new Date(challenge.issuedAt).toISOString(), expiresAt: new Date(challenge.expiresAt).toISOString() } };
-      },
-    },
-    {
-      // The second half: the signature. The message is the one this server made for the code; nothing the browser sends is signed over.
-      method: "POST",
-      pattern: /^\/api\/rewards\/session$/,
-      name: "rewards_sign_in",
-      limit: "rewardsSignIn",
-      maxBody: 512,
-      needsOrigin: true,
-      needsSession: true,
-      handler: async (_ctx, _match, body) => {
-        const refused = new HttpError(401, "session", "That sign-in did not work. Try again.");
-        if (!isRecord(body)) throw refused;
-        const signature = body.signature;
-        // The code is used up by this attempt, whatever comes of it.
-        const held = signIn.redeem(body.nonce, now());
-        if (held === null) throw refused;
-        // The signature is of the one text this server made for the code, by the Solana address the code
-        // was made for, checked against that address's own key. Nothing the browser sends is signed over:
-        // a signature of anything else (a transaction, another site's message, another address's) is no sign-in.
-        if (!signedBy(held.address, held.message, signature)) throw refused;
-        const session = signIn.issue(held.address, now());
-        return { status: 200, body: { address: held.address, token: session.token, expiresAt: new Date(session.expiresAt).toISOString() } };
-      },
-    },
-    {
-      // One address's own points, for whoever holds a sign-in for that address. There is no route that takes an address and answers with points.
-      method: "GET",
-      pattern: /^\/api\/rewards\/me$/,
-      name: "rewards_read",
-      limit: "rewardsRead",
-      handler: async (ctx) => {
-        const address = signIn.verify(ctx.req.headers["x-rewards-session"], now());
-        if (address === null) throw new HttpError(401, "session", "Sign in to see your points.");
-        // On a practice server, whoever signs in is given sample points to look at.
-        deps.practice?.samples?.ensureFor(address, now());
-        // Its share of the week's points, and what that share of the pool comes to, are worked out
-        // here and not in the browser: the browser is never given the week's total to work them out with.
-        const pool = config.reserveAddress === null ? null : await currentPool(config.reserveAddress);
-        const held = pool === null || pool.amount === null ? null : { amount: BigInt(pool.amount), usdMicro: pool.usdMicro === null ? null : BigInt(pool.usdMicro), decimals: pool.decimals };
-        return { status: 200, body: rewards.view(address, now(), held) };
-      },
-    },
     // The site's own totals, and its list of the latest swaps by what each sent, as server/stats.ts
     // keeps them: nothing of the receiving side of any swap. Where the Stats page is switched off this
     // is no route at all, and its address is answered like any other that is none.
     ...(config.statsPage ? [statsRoute] : []),
-    ...(tokenRoute === null ? [] : [tokenRoute]),
     {
       // Exists only with the practice provider: moves a practice order along.
       method: "POST",

@@ -72,8 +72,6 @@ export interface OrderRecord {
   refundFee: string | null;
   recipient: string;
   refundTo: string;
-  /** Where this swap's points go: a Solana address, or null when the swap adds none. Absent on records made before points existed. */
-  rewardsAddress?: string | null;
   /**
    * The routing level the order was made with: "basic" for private routing, "public" for the
    * ordinary kind. Absent on records made before the level was kept: every one of those was public,
@@ -195,7 +193,7 @@ export interface OrderStore {
    * could mean several orders opens none of them.
    */
   findByDeposit(address: string): OrderRecord | null;
-  /** The ID of every order on disk. For work that must look at each of them once (the points record, at start). */
+  /** The ID of every order on disk. For work that must look at each of them once (the site's totals, at start). */
   ids(): string[];
   /**
    * Marks an order as added to the site's totals. True only the first time, and by then the mark is
@@ -467,7 +465,7 @@ export function createOrderStore(dataDir: string, options: { onState?(record: Or
       const next: OrderRecord = { ...existing, state };
       writeDurable(fileFor(id), JSON.stringify(next));
       remember(next);
-      // Told after the record is safely on disk. What listens (the points record) must never be able to undo a saved state.
+      // Told after the record is safely on disk. What listens (the site's totals) must never be able to undo a saved state.
       try {
         options.onState?.(next);
       } catch {

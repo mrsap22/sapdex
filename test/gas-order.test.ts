@@ -73,7 +73,6 @@ function swap(overrides: Partial<OrderView> = {}): OrderView {
     refundFee: null,
     recipient: SOL_ADDRESS,
     refundTo: EVM_ADDRESS,
-    rewardsAddress: null,
     routing: routingOf("basic"),
     depositAddress: SWAP_DEPOSIT,
     depositMemo: null,
@@ -755,8 +754,6 @@ describe("a gas order opened by its own ID", () => {
     expect(markup).toContain('<details class="order-fold"><summary>Gas order details<');
     expect(markup).not.toContain("<summary>Order details<");
     expect(words(markup).endsWith(`Gas order ${GAS_ID} . Keep this page's link: it is the only way back to this order.`)).toBe(true);
-    expect(words(markup)).toContain("This gas order adds no points: it was made without a rewards address.");
-    expect(words(page(gasOrder({ rewardsAddress: SOL_ADDRESS })))).toContain("This gas order's points go to this address when it is delivered.");
   });
 
   it("is otherwise the ordinary page of an order: its own steps, its own deposit, and no gas line of its own", () => {
@@ -768,7 +765,6 @@ describe("a gas order opened by its own ID", () => {
     // An ordinary order still says what it always said.
     const ordinary = page(swap());
     expect(ordinary).toContain("<summary>Order details<");
-    expect(words(ordinary)).toContain("This swap adds no points: it was made without a rewards address.");
   });
 
   it("is an order like any other to every rule of the page", () => {

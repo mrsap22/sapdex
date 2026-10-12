@@ -4,7 +4,6 @@ import { checkAddress } from "../../../shared/addresses.ts";
 import { displayBps, displayExact } from "../../../shared/amounts.ts";
 import type { CreateOrderBody } from "../../../shared/api.ts";
 import { chainName, sendWindowMs } from "../../../shared/chains.ts";
-import { REWARDS } from "../../../shared/rewards.ts";
 import { api, ApiError } from "../api.ts";
 import { IMPACT_BLOCK_BPS, IMPACT_WARN_BPS } from "../config.ts";
 import { GAS_WITHDRAWN, gasChoice, gasDiffers, gasKey, gasPart, reviewAge, totalSent, TWO_PAYMENTS, type ReviewedGas } from "../lib/gas-logic.ts";
@@ -38,8 +37,6 @@ function alignedPair(a: string, b: string): [string, string] {
   return [pad(a), pad(b)];
 }
 
-/** Under the rewards address in Ghost mode: the field is empty unless the person fills it, and they are told what filling it does. */
-export const GHOST_REWARDS_HINT = "Naming an address ties this swap's points to it. Leave it empty and this swap adds no points.";
 /** Said before an order is made in Ghost mode, where any other order is told that its deposit will be listed: this one is not, and its record does not outlast it. */
 export const GHOST_ORDER_LINE = "This order is not listed on the Stats page, and its record is deleted from this site's server when it is delivered or refunded.";
 
@@ -60,8 +57,7 @@ function Row({ label, children, name }: { label: string; children: React.ReactNo
  * how long there is to pay, and the Terms. Confirming makes the order; it moves no funds.
  * Where the server routes swaps privately, it also says how this one is routed, and the order is
  * asked for by that route and no other.
- * In Ghost mode the order is marked as made in it and is added to no list in this browser, and the
- * rewards address is the person's to give or leave out: nothing fills it in.
+ * In Ghost mode the order is marked as made in it and is added to no list in this browser.
  * With "Add gas" switched on there are two parts: the swap, as ever, and the gas order beside it,
  * with its own amounts and fees; then what is sent in all. The gas order's numbers are asked for,
  * reviewed and confirmed with the swap's, and the order that comes back is held to both.
@@ -79,9 +75,6 @@ export function ReviewSheet() {
   const [phase, setPhase] = useState<ReviewPhase>("review");
   const [accepted, setAccepted] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
-  // Where this swap's points go: the Solana address typed here, or nowhere.
-  // No rewards address is asked for or sent.
-  const rewardsText = "";
   // True when the numbers were replaced because the route changed, not the price.
   const [rerouted, setRerouted] = useState(false);
   const [now, setNow] = useState(() => Date.now());
@@ -108,7 +101,7 @@ export function ReviewSheet() {
   // The same for the gas order, by its own preview's word. It is only ever private (a preview that is not is never shown).
   const gasRouting = gas === null ? null : routingNote(privacyMode, gas.quote);
   const privately = routedPrivately(quote);
-  // "None" unless the server is set to take a fee. Points do not turn on it: they are counted from the size of the swap.
+  // "None" unless the server is set to take a fee.
   const noFee = appFeeWords(quote);
   // Addresses are shown, sent and compared in their one standard spelling (the letter-case that
   // carries the checksum, for example). The server stores that spelling; anything else typed here
@@ -121,11 +114,6 @@ export function ReviewSheet() {
   const refundTo = standard(from?.chain, swap.refundTo);
   const recipient = standard(to?.chain, swap.recipient);
   const refundValid = from !== null && checkAddress(from.chain, refundTo).ok;
-  // Points belong to a Solana address. One can be given here, or the swap adds no points: nothing
-  // stands in for an address the person has not given.
-  const rewardsTyped = rewardsText.trim();
-  const rewardsTo = rewardsTyped !== "" ? standard(REWARDS.chain, rewardsTyped) : "";
-  const rewardsValid = rewardsTo === "" || checkAddress(REWARDS.chain, rewardsTo).ok;
   // Every new set of numbers must be on screen for a moment before it can be confirmed, and needs
   // its own tick when the price impact is large: a yes given to one quote is not a yes to the next.
   // The gas order's numbers are part of the set: new ones, and gas going out of the review, are new numbers too.
@@ -160,10 +148,10 @@ export function ReviewSheet() {
   };
 
   const confirm = async () => {
-    if (quote === null || !refundValid || !rewardsValid) return;
+    if (quote === null || !refundValid) return;
     setPhase("creating");
     setProblem(null);
-    const reviewed: Reviewed = { from: from.id, to: to.id, amountIn: quote.amountIn, minAmountOut: quote.minAmountOut, slippageBps: quote.slippageBps, recipient, refundTo, rewardsAddress: rewardsTo === "" ? null : rewardsTo, ...(quote.routing !== undefined ? { routing: quote.routing } : {}) };
+    const reviewed: Reviewed = { from: from.id, to: to.id, amountIn: quote.amountIn, minAmountOut: quote.minAmountOut, slippageBps: quote.slippageBps, recipient, refundTo, ...(quote.routing !== undefined ? { routing: quote.routing } : {}) };
     // What the gas order must turn out to be, where gas is part of this review. Its two addresses are the swap's own, and no others.
     const reviewedGas: ReviewedGas | null = gas === null ? null : { from: from.id, to: gas.coin.id, amountIn: gas.quote.amountIn, recipient, refundTo };
     const body: CreateOrderBody & { requestId: string } = {
@@ -175,7 +163,6 @@ export function ReviewSheet() {
       slippageBps: quote.slippageBps,
       recipient,
       refundTo,
-      ...(rewardsTo !== "" ? { rewardsAddress: rewardsTo } : {}),
       // The person's choice of public routing, exactly as the quote was asked for. No level is ever named.
       ...routingChoice(privacyMode, swap.withoutPrivate),
       // An order made in Ghost mode says so, and no other order says anything of it.
@@ -248,9 +235,9 @@ export function ReviewSheet() {
       footer={
         <>
           <p className="review-problem" role="alert" data-kind={problem !== null ? "error" : "plain"}>
-            {problem ?? (!refundValid && quote !== null ? "Enter a valid refund address above." : !rewardsValid && quote !== null ? "Enter a valid rewards address above, or clear that field." : age === "expired" ? "This quote has expired. Refresh it to see the numbers as they are now." : " ")}
+            {problem ?? (!refundValid && quote !== null ? "Enter a valid refund address above." : age === "expired" ? "This quote has expired. Refresh it to see the numbers as they are now." : " ")}
           </p>
-          <PrimaryButton onClick={act} disabled={action.disabled || (action.kind === "confirm" && (!refundValid || !rewardsValid))} busy={action.busy}>
+          <PrimaryButton onClick={act} disabled={action.disabled || (action.kind === "confirm" && !refundValid)} busy={action.busy}>
             {action.label}
           </PrimaryButton>
         </>

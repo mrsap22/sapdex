@@ -47,7 +47,7 @@ describe("this is its own project: nothing of the site its code started from is 
   it("holds in every file the repository keeps, and in every file's name", () => {
     const files = tracked();
     // The list reaches what it should: the code, the pages, the tests (this one among them), the scripts and the settings' notes.
-    for (const expected of ["README.md", ".env.example", "package.json", "package-lock.json", "web/index.html", "web/public/site.webmanifest", "server/config.ts", "shared/rewards.ts", "scripts/mutation-check.ts", "test/own-project.test.ts", ".github/workflows/ci.yml"]) {
+    for (const expected of ["README.md", ".env.example", "package.json", "package-lock.json", "web/index.html", "web/public/site.webmanifest", "server/config.ts", "shared/api.ts", "scripts/mutation-check.ts", "test/own-project.test.ts", ".github/workflows/ci.yml"]) {
       expect(files, expected).toContain(expected);
     }
     expect(files.length).toBeGreaterThan(300);

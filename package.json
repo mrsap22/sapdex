@@ -15,9 +15,7 @@
     "check:pages": "tsx scripts/page-quality.ts",
     "check:lock": "tsx scripts/check-lock.ts",
     "check:logos": "tsx scripts/check-coin-logos.ts",
-    "start": "tsx server/index.ts",
-    "rewards:export": "tsx scripts/rewards-export.ts",
-    "rewards:record": "tsx scripts/rewards-record.ts"
+    "start": "tsx server/index.ts"
   },
   "dependencies": {
     "@defuse-protocol/one-click-sdk-typescript": "0.1.26",

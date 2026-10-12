@@ -13,7 +13,6 @@ import * as icons from "../web/src/lib/icons.ts";
 import { CHAIN_ICONS, CHAIN_LOGOS, COIN_ICONS, COIN_LOGOS, chainIconUrl, coinIconUrl, coinKey, coinLogoName, logoUrl } from "../web/src/lib/icons.ts";
 import { DEPOSIT_CLOSE_MS, payWindowMs, sendWindowMs } from "../shared/chains.ts";
 import { HEADLINE_SUB, headlineWords, POSITIONING } from "../shared/positioning.ts";
-import { swapPointsMicro } from "../shared/rewards.ts";
 import { readRecent, withOrder } from "../web/src/stores/orders.ts";
 import { quoteAge } from "../web/src/stores/swap.ts";
 import { isToken } from "../web/src/stores/tokens.ts";
@@ -828,8 +827,7 @@ describe("words the site never uses", () => {
     const banned = /\b(anonymous|untraceable|mixer|invisible|guaranteed?|earn|yield|apr|partner(ship)?|darkswap)\b|hidden from authorities|can(?:not|'t| not) be traced/i;
     // One word on the list is named in one place, to say what private routing is not: a page of the
     // documentation explains "how it differs from a mixer". There, in those
-    // words and in no others, it may stand (as "an investment" is named once in the Terms, to say that
-    // points are not one). Anywhere else, and in any other words, it is still never used.
+    // words and in no others, it may stand. Anywhere else, and in any other words, it is still never used.
     const docs = path.resolve("web", "src", "pages", "DocsPage.tsx");
     // (The section's own anchor is that word too: it is the section's name in an address, not a claim.)
     const NOT_ONE = /How it differs from a mixer(?:" id="mixer")?|Private routing is not a mixer\./g;
@@ -845,7 +843,7 @@ describe("words the site never uses", () => {
     expect(banned.test("How it differs from a mixer, and why it is untraceable".replace(NOT_ONE, ""))).toBe(true);
     // The check can fail, and the words now allowed pass it.
     for (const sentence of ["Fully anonymous swaps.", "An untraceable route.", "Works like a mixer.", "Invisible to everyone.", "Guaranteed delivery.", "Hidden from authorities.", "A swap that cannot be traced.", "It can't be traced."]) expect(banned.test(sentence), sentence).toBe(true);
-    for (const sentence of ["Private", "Use private routing", "Swap without private routing", "A private swap", PRIVATE_UNAVAILABLE, "SaplingDex takes no fee. The only fee is the provider's 0.20%.", "A privately routed swap adds points the same way.", "Routed privately.", "Public, by your choice"]) expect(banned.test(sentence), sentence).toBe(false);
+    for (const sentence of ["Private", "Use private routing", "Swap without private routing", "A private swap", PRIVATE_UNAVAILABLE, "SaplingDex takes no fee. The only fee is the provider's 0.20%.", "Routed privately.", "Public, by your choice"]) expect(banned.test(sentence), sentence).toBe(false);
   });
 
   it("never states a minimum in dollars in its own words: only the server's answer to a person's own quote can", () => {
@@ -1248,18 +1246,11 @@ describe("private routing: what is shown, and when", () => {
     expect(appFeeWords(null)).toBeNull();
   });
 
-  it("points do not turn on a fee or on routing: a swap with no SaplingDex fee is shown its points like any other", () => {
+  it("a quote or an order is without a fee of SaplingDex's only where its fee is nothing, however it is routed", () => {
     expect(feeFree(view(PRIVATELY))).toBe(false);
     expect(feeFree(view(IN_PUBLIC))).toBe(false);
     expect(feeFree(view(PRIVATELY, noAppFee))).toBe(true);
     expect(feeFree(null)).toBe(false);
-    // The points a quote shows come from the dollar value of what is paid, ten to the dollar, and from nothing else.
-    expect(swapPointsMicro("1265.13")).toBe(12_651_300_000n);
-    // The page takes them from that value alone. Nothing that draws a quote, a review or an order asks whether there is a fee before it speaks of points.
-    const read = (file: string) => fs.readFileSync(path.resolve("web", "src", file), "utf8");
-    expect(read("components/QuotePanel.tsx")).toContain("const points = ready && pointsShown ? swapPointsMicro(quote.amountInUsd) : null;");
-    for (const file of ["components/QuotePanel.tsx", "components/ReviewSheet.tsx", "pages/OrderPage.tsx"]) expect(read(file), file).not.toMatch(/feeFree|noPoints|adds no points: SaplingDex/);
-    expect(read("lib/swap-logic.ts")).not.toMatch(/NO_FEE_NO_POINTS|adds no points: SaplingDex/);
   });
 
   it("tells a screen reader that a new quote is privately routed, in two words, or says nothing of routing", () => {

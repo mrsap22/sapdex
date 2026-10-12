@@ -16,7 +16,6 @@
 import type { ReactNode } from "react";
 import { TERMS_VERSION } from "../../../shared/api.ts";
 import { GHOST_DOC_SLUG } from "../../../shared/pages.ts";
-import { REWARDS } from "../../../shared/rewards.ts";
 import { INDEPENDENCE } from "../../../shared/positioning.ts";
 import { DocSection, DocsLayout } from "../components/DocsLayout.tsx";
 import { Link } from "../components/Link.tsx";
@@ -129,24 +128,11 @@ export function TermsPage() {
         <p>Crypto assets are not protected in the United Kingdom. This service is not regulated by the Financial Conduct Authority, and you will not have access to the Financial Ombudsman Service or the Financial Services Compensation Scheme if something goes wrong. Do not use it unless you are prepared to lose all of what you put in.</p>
       </Section>
 
-      <Section title="11. Points and weekly rewards">
-        <p>
-          SaplingDex keeps a record of points for delivered swaps: {REWARDS.pointsPerUsd} points for each US dollar of a delivered swap's value, and nothing for a swap that is refunded or fails. It may send a weekly payout shared out by points, in ZEC on Solana, from the pool's wallet. <Link href="/docs/rewards">The rules</Link> are part of these terms.
-        </p>
-        <ul>
-          <li>Points are a record and nothing more. They have no money value. They are not a currency, an investment or a claim on anything, and they cannot be bought, sold or moved.</li>
-          <li>A payout is not owed. Whether there is one in a given week, and how large it is, is at the operator's discretion; it can be changed, made smaller or stopped at any time, also for points already recorded.</li>
-          <li>Points recorded by mistake, or gained by abusing the site, can be corrected or removed.</li>
-          <li>A rewards address is screened like every other address. Nothing is sent to an address on a sanctions list, or for anyone in a place under sanctions.</li>
-          <li>Seeing your own points means signing one plain message with your Solana wallet, on the Rewards page only. It is never a transaction. It lasts {REWARDS.sessionMinutes} minutes. Paying for a swap never asks for a signature.</li>
-        </ul>
-      </Section>
-
-      <Section title="12. Governing law">
+      <Section title="11. Governing law">
         <p>These terms are governed by the law of the country in which the operator of SaplingDex is established, and disputes go to the courts of that country. Nothing here takes away a right that the law of the place where you live gives you and does not let you sign away.</p>
       </Section>
 
-      <Section title="13. Changes and contact">
+      <Section title="12. Changes and contact">
         <p>These terms may change. The version in force is the one shown here when you confirm an order, and its version label is kept with that order.</p>
         <p>
           <Contact />
@@ -156,7 +142,7 @@ export function TermsPage() {
 
       {/* Only where swaps are routed privately. It comes last, so that the sections before it keep their numbers either way. */}
       {privateOn ? (
-        <Section title="14. Private routing">
+        <Section title="13. Private routing">
           <p>SaplingDex asks the swap service to route each swap with its confidential routing. With it, the link between your deposit and your delivery is not in public records. The deposit and the delivery themselves are public transfers, each on its own blockchain.</p>
           <ul>
             <li>Private routing is not anonymity. The swap service's confidential system can see a swap, and so can SaplingDex for what is needed to run your order.</li>
@@ -164,7 +150,7 @@ export function TermsPage() {
             <li>You must not use SaplingDex to conceal the proceeds of crime, or to get round sanctions or any law.</li>
             <li>The swap service does not promise that confidentiality is complete, and it may be required to disclose what it holds. SaplingDex does not promise it either.</li>
             <li>When private routing cannot be had for a swap, the swap is not made unless you choose public routing for it. A swap made that way is an ordinary public swap.</li>
-            <li>The fees of a privately routed swap are shown in its quote before you confirm, as for any swap, and it adds points by the same rules.</li>
+            <li>The fees of a privately routed swap are shown in its quote before you confirm, as for any swap.</li>
           </ul>
         </Section>
       ) : null}
@@ -195,16 +181,13 @@ export function PrivacyPage() {
       <Section title="2. What is kept on the server, and for how long">
         <ul>
           <li>
-            <strong>Orders.</strong> When you confirm a swap, the server keeps the order: when it was made; the two coins; the amounts, the fees and the slippage limit; your receiving and refund addresses; the rewards address, if the order has one; the deposit address, and the memo where an order has one; the deadline; the provider's signed quote for the order, as it was given; the order's status and when it last changed; the transaction hashes of the deposit and of the delivery or refund, whether you gave them or the provider reported them, with the amounts that arrived, were delivered or were refunded and the reason for a refund; the version of the Terms you accepted; and the result of the sanctions check, with when it was made and which list it was made against. An order that was never paid is deleted 24 hours after its deadline. Other orders are deleted 30 days after they finish. An order made in Ghost mode is deleted sooner than either: the moment it is delivered or refunded (see Ghost mode, below). An unfinished order that has coins in it is kept until it has been dealt with.
+            <strong>Orders.</strong> When you confirm a swap, the server keeps the order: when it was made; the two coins; the amounts, the fees and the slippage limit; your receiving and refund addresses; the deposit address, and the memo where an order has one; the deadline; the provider's signed quote for the order, as it was given; the order's status and when it last changed; the transaction hashes of the deposit and of the delivery or refund, whether you gave them or the provider reported them, with the amounts that arrived, were delivered or were refunded and the reason for a refund; the version of the Terms you accepted; and the result of the sanctions check, with when it was made and which list it was made against. An order that was never paid is deleted 24 hours after its deadline. Other orders are deleted 30 days after they finish. An order made in Ghost mode is deleted sooner than either: the moment it is delivered or refunded (see Ghost mode, below). An unfinished order that has coins in it is kept until it has been dealt with.
           </li>
           <li>
             <strong>Access log.</strong> For each request to the site's data routes: the time, the route and the kind of request, the outcome, how long it took, a shortened network address (not the full one), {regionBlock ? <>the country, </> : null}a one-way fingerprint of the order ID, the outcome of the sanctions check when an order is made, and the provider's reference number for the request when there is one. No wallet address and no order link is written to it. It is deleted after 14 days.
           </li>
           <li>
             <strong>Running log.</strong> The server also writes a log of its own work, which the host keeps for the host's own period: when each order's status changed, naming the order by a one-way fingerprint; the alerts raised for the operator; and the provider's reference numbers. It holds no address and no order link.
-          </li>
-          <li>
-            <strong>Points.</strong> When a swap is delivered and has a rewards address, the server writes down: a one-way fingerprint of the order's ID, the rewards address, the swap's value in US dollars, the two coins and their chains, and the time. When a week is closed it writes down the pool, each rewards address's points and payout, and afterwards the payout transactions. These are the record of what was counted and paid, and are kept.
           </li>
           <li>
             {statsOn ? (
@@ -218,13 +201,10 @@ export function PrivacyPage() {
             )}
           </li>
           <li>
-            <strong>Signing in on the Rewards page.</strong> The one-time code of a sign-in is held in the server's memory for {REWARDS.nonceMinutes} minutes and used once. The sign-in itself is not stored on the server: it is a pass that your browser shows with each request, good for {REWARDS.sessionMinutes} minutes. Your signature is checked and not kept.
-          </li>
-          <li>
             <strong>Track order.</strong> The order ID or deposit address you paste there is used to find the order, and is not written down.
           </li>
           <li>
-            <strong>Wallets.</strong> The site connects to no wallet. The one time it speaks to one is the Rewards page's sign-in, if you press it: your Solana wallet gives its address and signs one plain message, and that address is sent to this server to be checked. Nothing else about the wallet is read: not what it holds, and not what else it has done.
+            <strong>Wallets.</strong> The site never speaks to any wallet at all. It asks none to connect or to sign, and reads nothing from one.
           </li>
           <li>
             <strong>Your network address.</strong> It is used in memory to apply rate limits{regionBlock ? <>, and to work out your country and region</> : null}. Only the shortened form is written down.
@@ -232,11 +212,11 @@ export function PrivacyPage() {
           {/* Only where Add gas is offered. */}
           {privateOn ? (
             <li>
-              <strong>Add gas.</strong> When gas is added to a swap, the gas order is a second order of its own, kept as any order is and for as long. The swap's record notes whether its gas order was made, and the gas order's record that it is one. The gas order's ID is worked out from the swap's, which is how the swap's page shows both; neither record holds the other's ID. A delivered gas order adds its value in US dollars to the running totals, with no row of its own and without being counted as a swap, and its points are written down as set out under Points. Where the two are made in Ghost mode, each is deleted as set out under Ghost mode, below.
+              <strong>Add gas.</strong> When gas is added to a swap, the gas order is a second order of its own, kept as any order is and for as long. The swap's record notes whether its gas order was made, and the gas order's record that it is one. The gas order's ID is worked out from the swap's, which is how the swap's page shows both; neither record holds the other's ID. A delivered gas order adds its value in US dollars to the running totals, with no row of its own and without being counted as a swap. Where the two are made in Ghost mode, each is deleted as set out under Ghost mode, below.
             </li>
           ) : null}
           <li>
-            <strong>Ghost mode.</strong> An order made in <Link href={docHref(GHOST_DOC_SLUG)}>Ghost mode</Link> is marked as one. While it runs, the server keeps it as it keeps any order. The moment it is delivered or refunded its record is deleted; one that was never paid is deleted a day after its deadline, once the server has stopped looking for a late deposit; one that fails, or that ran out after a transaction was named for it that could not be confirmed, is kept for 30 days, as any order is, because coins may still be in it. After the deletion the server still holds three things of it: a one-way fingerprint of the order's ID, with one word for how it ended, for 30 days, so that the order's link can say that the order finished and how; its place in the running totals, {statsOn ? <>with no row among the Stats page's recent swaps and no listing of its deposit transaction</> : <>with no row kept for it</>}; and, if the order has a rewards address, its points, which are written down before the record is deleted and kept as set out under Points. The logs name it by a one-way fingerprint, as they name any order, and hold neither an address nor a transaction hash of it. It is never found from its deposit address. Ghost mode changes nothing else on this page: the access log and your network address are treated as for any visit, the host keeps its own record of each request, the swap service receives what it does for any swap and keeps its own records, and every transfer is public on its blockchain.
+            <strong>Ghost mode.</strong> An order made in <Link href={docHref(GHOST_DOC_SLUG)}>Ghost mode</Link> is marked as one. While it runs, the server keeps it as it keeps any order. The moment it is delivered or refunded its record is deleted; one that was never paid is deleted a day after its deadline, once the server has stopped looking for a late deposit; one that fails, or that ran out after a transaction was named for it that could not be confirmed, is kept for 30 days, as any order is, because coins may still be in it. After the deletion the server still holds two things of it: a one-way fingerprint of the order's ID, with one word for how it ended, for 30 days, so that the order's link can say that the order finished and how; and its place in the running totals, {statsOn ? <>with no row among the Stats page's recent swaps and no listing of its deposit transaction</> : <>with no row kept for it</>}. The logs name it by a one-way fingerprint, as they name any order, and hold neither an address nor a transaction hash of it. It is never found from its deposit address. Ghost mode changes nothing else on this page: the access log and your network address are treated as for any visit, the host keeps its own record of each request, the swap service receives what it does for any swap and keeps its own records, and every transfer is public on its blockchain.
           </li>
         </ul>
       </Section>
@@ -246,8 +226,7 @@ export function PrivacyPage() {
           <li>The list of coins, for up to 24 hours, so the site still opens if the list cannot be fetched.</li>
           <li>A list of the orders you made in this browser, so you can find them again. It holds the order ID, when the order was made and the two coins: no amount and no address. It never leaves your browser, and you can clear it at any time.</li>
           <li>A note that the page loaded itself again after the site was updated, so that it does so once only. It is kept until the tab is closed.</li>
-          <li>The Rewards page's sign-in is held in that page's memory only. It is not written to your browser's storage, and it ends when the page is closed or reloaded.</li>
-          <li>While Ghost mode is on, none of the above is written. One thing is kept: a flag for this tab that says the mode is on, so that loading the page again does not turn it off. It ends when the tab is closed. The list of orders you made earlier is not shown while the mode is on, and is still there when you turn it off, unless you chose to clear what this browser already holds. The Rewards sign-in is off, and its code is not loaded.</li>
+          <li>While Ghost mode is on, none of the above is written. One thing is kept: a flag for this tab that says the mode is on, so that loading the page again does not turn it off. It ends when the tab is closed. The list of orders you made earlier is not shown while the mode is on, and is still there when you turn it off, unless you chose to clear what this browser already holds.</li>
         </ul>
       </Section>
 
@@ -262,10 +241,10 @@ export function PrivacyPage() {
             <strong>Railway</strong>, which hosts the site and its data. Like any host, it stands in front of the server and may keep its own record of each request for its own period: the time, your full network address and the address requested. For an order's page that address contains the order's ID. SaplingDex's own logs never hold either in full.
           </li>
           <li>
-            <strong>Blockchain node providers</strong>, which the server asks about transactions, about what the pool's wallet holds, and whether an address you entered is a contract. They see the addresses asked about, not your network address.
+            <strong>Blockchain node providers</strong>, which the server asks about transactions, and whether an address you entered is a contract. They see the addresses asked about, not your network address.
           </li>
           <li>
-            <strong>Sapling</strong>, the launchpad the coin was planted on. The server asks its public service how its trade fee is split and where the coin's share goes. Only the coin's own public address is sent; nothing about you is. Your browser asks Sapling nothing, unless you follow a link to it.
+            <strong>Sapling</strong>, the launchpad the coin was planted on, only if you follow a link to it. Neither the server nor your browser asks it anything.
           </li>
           <li>
             <strong>Block explorers</strong>, only if you follow a link to one.
@@ -274,7 +253,6 @@ export function PrivacyPage() {
             <strong>The operator's alert channel</strong>, a messaging service the operator chooses, which is told when something needs attention. An alert never holds an address or a link to an order; at most it names an order by a one-way fingerprint.
           </li>
         </ul>
-        <p>A payout is a transfer of ZEC on Solana from the pool's wallet to a rewards address. Like every transfer, it is public: anyone can see the address and the amount.</p>
         <p>Addresses are checked against the sanctions list published by the United States Treasury. The list is downloaded to the server and the check happens there; your addresses are not sent to anyone for it.</p>
         {/* Only where the server is set to refuse visitors by where they are: nowhere else is a country worked out at all. */}
         {regionBlock ? (

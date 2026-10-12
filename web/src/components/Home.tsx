@@ -7,7 +7,6 @@ import { ArrowRight, Ban, Check, CircleHelp, ExternalLink } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { chainName, explorerAddressUrl } from "../../../shared/chains.ts";
 import { PRIVATE_DOC_SLUG } from "../../../shared/pages.ts";
-import type { TokenFacts } from "../../../shared/api.ts";
 import { HEADLINE_SUB, headlineWords, INDEPENDENCE } from "../../../shared/positioning.ts";
 import { docHref } from "../lib/docs-logic.ts";
 import { chainIconUrl } from "../lib/icons.ts";
@@ -31,9 +30,6 @@ const TOKEN_CHAIN = "sol";
 
 /** Where a coin's own page is on Sapling, the launchpad it was planted on. Built from the coin's address alone. */
 const saplingCoinUrl = (mint: string) => `https://sapling.cash/coin/${mint}`;
-
-/** Hundredths of a percent as a percentage with two decimals: 125 gives "1.25%". */
-const percentOf = (bps: number) => `${Math.trunc(bps / 100)}.${String(bps % 100).padStart(2, "0")}%`;
 
 /** A small label above each headline, and optionally a sentence under it. On a page of its own the headline is the page's title. */
 export function SectionHead({ tag, title, id, level = 2, children }: { tag: string; title: string; id: string; level?: 1 | 2; children?: ReactNode }) {
@@ -170,23 +166,21 @@ function useSwapsTotal(): number | null {
   return on ? swaps : null;
 }
 
-
-/** One figure of the strip beside the headline: a small label, the number, and at most a quiet note under it. */
-function Figure({ label, note, warm = false, children }: { label: string; note?: ReactNode; warm?: boolean; children: ReactNode }) {
+/** One figure of the strip beside the headline: a small label, and the number. */
+function Figure({ label, children }: { label: string; children: ReactNode }) {
   return (
     <li className="figure">
       <p className="figure-label">{label}</p>
-      <p className={warm ? "figure-value mono figure-warm" : "figure-value mono"}>{children}</p>
-      <p className="figure-note mono">{note}</p>
+      <p className="figure-value mono">{children}</p>
     </li>
   );
 }
 
 /**
  * Beside the headline: a strip of plain numbers, each one read from the site's own data and each
- * one checkable (the swaps on the Stats page; the chains in the coin picker). A number that has not arrived, or cannot be read, is not
- * there: nothing stands in for it. The strip keeps its height from the first paint, so nothing
- * under it moves as the numbers come in.
+ * one checkable (the swaps on the Stats page; the chains in the coin picker). A number that has
+ * not arrived, or cannot be read, is not there: nothing stands in for it. The strip keeps its
+ * height from the first paint, so nothing under it moves as the numbers come in.
  */
 export function HeroFigures() {
   const counts = useListCounts();
@@ -415,42 +409,15 @@ function PrivateMeans() {
   );
 }
 
-/** What Sapling says of the coin, asked of this site's own server. Null until it arrives, and if it does not. */
-function useTokenFacts(wanted: boolean): TokenFacts | null {
-  const [facts, setFacts] = useState<TokenFacts | null>(null);
-  useEffect(() => {
-    if (!wanted) return;
-    let live = true;
-    api.tokenFacts().then(
-      (answer) => {
-        if (live) setFacts(answer);
-      },
-      () => undefined,
-    );
-    return () => {
-      live = false;
-    };
-  }, [wanted]);
-  return facts;
-}
-
 /**
- * Facts about the coin, and nothing else: its address, its chain, what it trades against, where it
- * was planted, and how its trades feed the pool. No price, no market value and no chart. Not shown
- * at all until the coin's address has been set.
- *
- * How the coin feeds the pool is said from what this site's server read from Sapling itself: the
- * split of Sapling's fee in Sapling's own numbers, and, only where Sapling says so, that this
- * coin's share goes to the pool's wallet. A part that could not be read is left out.
+ * Facts about the coin, and nothing else: its address, its chain, what it trades against and where
+ * it was planted. No price, no market value and no chart. Not shown at all until the coin's
+ * address has been set.
  */
 export function TokenSection({ ownPage = false }: { ownPage?: boolean }) {
   const address = useApp((state) => state.config?.tokenAddress ?? null);
-  const pool = useApp((state) => state.config?.reserveAddress ?? null);
-  const facts = useTokenFacts(address !== null);
   if (address === null) return null;
   const tokenUrl = explorerAddressUrl(TOKEN_CHAIN, address, "token");
-  const poolUrl = pool !== null ? explorerAddressUrl(TOKEN_CHAIN, pool) : null;
-  const fee = facts?.fee ?? null;
   return (
     <section className="section" id="token" aria-labelledby="token-title">
       <SectionHead tag="$SAPDEX" title="The $SAPDEX coin" id="token-title" level={ownPage ? 1 : 2} />
@@ -481,22 +448,6 @@ export function TokenSection({ ownPage = false }: { ownPage?: boolean }) {
           </dd>
         </div>
       </Reveal>
-      {/* How a trade of the coin reaches the pool, in Sapling's own numbers as this site's server last read them. Left out where they could not be read. */}
-      <div className="token-pool" aria-live="polite">
-        {fee !== null ? (
-          <p className="token-words">
-            On Sapling, {percentOf(fee.totalBps)} of every trade of a coin is taken in ZEC and split by Sapling's program: {percentOf(fee.liquidityBps)} to liquidity, {percentOf(fee.burnBps)} to burning $SAPLING, {percentOf(fee.saplingBps)} to Sapling, and{" "}
-            {percentOf(fee.planterBps)} to wherever the coin's planter chose.{facts?.feedsPool === true ? <> For this coin that is the pool's wallet: each week the ZEC it holds is shared out, by points, to the people who swapped here.</> : null} These are Sapling's numbers, and
-            Sapling can change them. The venue the coin trades on adds a fee of its own.
-          </p>
-        ) : null}
-        {facts?.feedsPool === true && pool !== null ? (
-          <p className="token-words">
-            <Link href="/rewards">See the pool</Link>
-            {poolUrl !== null ? <Outbound href={poolUrl}>The pool's wallet on Solscan</Outbound> : null}
-          </p>
-        ) : null}
-      </div>
       <p className="token-words muted">{INDEPENDENCE}</p>
     </section>
   );

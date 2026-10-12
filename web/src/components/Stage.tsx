@@ -50,21 +50,6 @@ function TrackArt() {
   );
 }
 
-/** The seven days of a week as bars that rise, and a ring that closes round the week's count. */
-function PointsArt() {
-  return (
-    <svg className="art" viewBox="0 0 280 200" aria-hidden="true" focusable="false">
-      <path className="art-quiet" d="M36 150h150" />
-      {[38, 58, 46, 74, 52, 88, 64].map((height, index) => (
-        <rect key={index} className="art-bar" data-bar={index} x={42 + index * 20} y={150 - height} width="8" height={height} rx="4" />
-      ))}
-      <circle className="art-line" cx="228" cy="100" r="30" />
-      <circle className="art-accent art-count" cx="228" cy="100" r="30" />
-      <path className="art-ink" d="M218 100h20M228 90v20" />
-    </svg>
-  );
-}
-
 /** The token as a coin with its name on it, and one ring round it. */
 function TokenArt() {
   return (
@@ -130,7 +115,7 @@ function GasArt() {
   );
 }
 
-const ART: Record<Feature["key"], () => React.JSX.Element> = { swaps: SwapArt, tracking: TrackArt, rewards: PointsArt, ghost: GhostArt, gas: GasArt, token: TokenArt };
+const ART: Record<Feature["key"], () => React.JSX.Element> = { swaps: SwapArt, tracking: TrackArt, ghost: GhostArt, gas: GasArt, token: TokenArt };
 
 /** A swipe has to travel this far, in pixels, to count as one. */
 const SWIPE = 40;

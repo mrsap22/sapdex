@@ -93,7 +93,6 @@ function order(overrides: Partial<OrderView> = {}): OrderView {
     refundFee: null,
     recipient: SOL_ADDRESS,
     refundTo: EVM_ADDRESS,
-    rewardsAddress: null,
     routing: routingOf("public"),
     depositAddress: "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359",
     depositMemo: null,
@@ -599,12 +598,6 @@ export default function StatesPage() {
         <Case label="Ready, opened: the fees" wide>
           <QuotePanel quote={QUOTE} from={ETH} to={USDT} loading={false} stale={false} held startOpen impactConfirmed={false} onConfirmImpact={never} />
         </Case>
-        <Case label="Sending it yourself: nothing is said of points until an address for them is given" wide>
-          <QuotePanel quote={QUOTE} from={ETH} to={USDT} loading={false} stale={false} held pointsShown={false} impactConfirmed={false} onConfirmImpact={never} />
-        </Case>
-        <Case label="A swap between two dollar coins: its points are counted like any other swap's" wide>
-          <QuotePanel quote={{ ...QUOTE, amountIn: "1265130000", amountInUsd: "1265.13", fees: { ...QUOTE.fees, providerAmount: "2530260" } }} from={HOOD} to={USDT} loading={false} stale={false} held impactConfirmed={false} onConfirmImpact={never} />
-        </Case>
         <Case label="Refreshing: old numbers dimmed" wide>
           <QuotePanel quote={QUOTE} from={ETH} to={USDT} loading stale held startOpen impactConfirmed={false} onConfirmImpact={never} />
         </Case>
@@ -694,13 +687,13 @@ export default function StatesPage() {
         <Case label="The same row where the server routes in public: its left end is empty">
           <div className="card-tools">{CARD_TOOLS}</div>
         </Case>
-        <Case label="A private quote, opened: the routing, the two fees and the points" wide>
+        <Case label="A private quote, opened: the routing and the two fees" wide>
           <QuotePanel quote={PRIVATE_QUOTE} from={ETH} to={USDT} loading={false} stale={false} held startOpen routing={routingNote("basic", PRIVATE_QUOTE)} impactConfirmed={false} onConfirmImpact={never} />
         </Case>
-        <Case label="A private quote: one line, with its points" wide>
+        <Case label="A private quote: one line" wide>
           <QuotePanel quote={PRIVATE_QUOTE} from={ETH} to={USDT} loading={false} stale={false} held routing={routingNote("basic", PRIVATE_QUOTE)} impactConfirmed={false} onConfirmImpact={never} />
         </Case>
-        <Case label="A private quote where SaplingDex is set to take a fee, opened: the fee row gives it in figures, and the points are the same" wide>
+        <Case label="A private quote where SaplingDex is set to take a fee, opened: the fee row gives it in figures" wide>
           <QuotePanel quote={FEE_QUOTE} from={ETH} to={USDT} loading={false} stale={false} held startOpen routing={routingNote("basic", FEE_QUOTE)} impactConfirmed={false} onConfirmImpact={never} />
         </Case>
         <Case label="A public quote by the person's own choice, opened" wide>

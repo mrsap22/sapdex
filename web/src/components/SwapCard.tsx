@@ -281,8 +281,6 @@ export function SwapCard() {
           loading={swap.loading || swap.dirty}
           stale={quote !== null && (swap.loading || swap.dirty)}
           held={/[1-9]/.test(swap.amountText)}
-          // A swap adds points only if a rewards address is given in the review, so nothing is promised before then.
-          pointsShown={false}
           routing={routingNote(privacyMode, quote, swap.withoutPrivate)}
           impactConfirmed={swap.impactConfirmed}
           onConfirmImpact={swap.setImpactConfirmed}

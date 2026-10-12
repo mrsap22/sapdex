@@ -1,12 +1,10 @@
 // Fails the build when the output:
 //   - contains anything that looks like a secret, the name or value of a server-only variable, a
-//     path from the build machine, the provider's address, Sapling's service or a chain's node
-//     (only the server asks those), or any wallet-connect library;
+//     path from the build machine, the provider's address or a chain's node (only the server asks
+//     those), Sapling's service (nothing asks it), or any code that speaks to a wallet;
 //   - holds a file at its top level that this site is not known to publish, a source map, or
 //     NEAR's own mark anywhere but as the icon of the NEAR coin and of the NEAR chain;
 //   - names a script or a stylesheet that is not in the build;
-//   - has the Rewards page's sign-in (the one piece of code that speaks to a wallet) in the first
-//     page load, or in more than one file;
 //   - breaks a size budget.
 
 import fs from "node:fs";
@@ -23,7 +21,6 @@ export const SERVER_ONLY = [
   "ETH_RPC_URL",
   "BASE_RPC_URL",
   "ARBITRUM_RPC_URL",
-  "SOLANA_RPC_URL",
   "FEE_RECIPIENT",
 ] as const;
 
@@ -34,18 +31,17 @@ const PATTERNS: Array<[RegExp, string]> = [
   [/\/(Users|home)\/[A-Za-z0-9._-]+\//, "a path from the build machine"],
   [/x-api-key/i, "the provider key header"],
   [/1click\.chaindefuser\.com/, "the provider's address (the browser must never call it)"],
-  [/walletconnect(?!ionerror)|web3modal|w3m-|reown|wagmi|keys\.coinbase\.com|walletlink\.org|cca-lite\.coinbase\.com/i, "a wallet-connect library (the site has none: an order is paid by sending to its deposit address)"],
-  [/api\.sapling\.cash/, "Sapling's service (only the server asks it; the page asks this site alone)"],
+  [/walletconnect|web3modal|w3m-|reown|wagmi|keys\.coinbase\.com|walletlink\.org|cca-lite\.coinbase\.com/i, "a wallet-connect library (the site has none: an order is paid by sending to its deposit address)"],
+  [/api\.sapling\.cash/, "Sapling's service (nothing of this site asks it; the page asks this site alone)"],
   [/mainnet-beta\.solana\.com|bnbchain\.org|publicnode\.com|mainnet\.base\.org|arbitrum\.io\/rpc|arb1\.arbitrum\.io/, "a chain's node (only the server reads a chain; the page asks this site alone)"],
-  [/signTransaction|signAndSendTransaction|signAllTransactions|sendTransaction/, "a request for a wallet to sign or send a transaction (the site asks a wallet for one thing only: to sign the sign-in's plain message)"],
+  // Whatever a page would need to find a wallet, to connect to one, or to ask one to sign or send
+  // anything, by the names wallets and their shared standard give those things. In any file of the
+  // build, whether the first page load fetches it or not.
+  [
+    /wallet-standard|standard:connect|solana:sign|signMessage|signTransaction|signAndSendTransaction|signAllTransactions|sendTransaction|signTypedData|personal_sign|eth_sign|eth_requestAccounts|window\.ethereum|window\.solana/,
+    "code that speaks to a wallet (the site never speaks to one: it asks none to connect, to sign or to send)",
+  ],
 ];
-
-/**
- * The mark of the one piece of code that speaks to a wallet: the Rewards page's sign-in, which
- * listens for wallets by this event of the standard they share. It is in the build once, in a file
- * of its own that is fetched only when "Sign in" is pressed: never in the first page load.
- */
-const WALLET_CODE = /wallet-standard:app-ready/;
 
 /**
  * The files a built script fetches at once, as it is itself fetched: what it imports or passes on
@@ -173,7 +169,6 @@ export function checkBuild(dist: string, env: Record<string, string | undefined>
     const raw = fs.readFileSync(file);
     sizes.script += zlib.gzipSync(raw, { level: 9 }).length;
     const text = raw.toString("utf8");
-    if (WALLET_CODE.test(text)) problems.push(`${src.slice(1)}: the sign-in's wallet code is part of the first page load (it must load only when "Sign in" is pressed on the Rewards page)`);
     // The first load is what the page names and whatever those files fetch at once themselves. The
     // build names every such file in the page, and so they are read above; a first file that fetched
     // another the page does not name would bring code into the first load that nothing here had looked at.
@@ -182,10 +177,6 @@ export function checkBuild(dist: string, env: Record<string, string | undefined>
       if (!initial.includes(fetched)) problems.push(`${src.slice(1)}: fetches ${fetched.slice(1)} at once, which the page does not name (the first page load must be only what the page names)`);
     }
   }
-
-  // The sign-in's wallet code is in exactly one file of the build, and that file is not one the page names.
-  const withWalletCode = walk(dist).filter((name) => name.endsWith(".js") && WALLET_CODE.test(fs.readFileSync(name, "utf8"))).map((name) => `/${path.relative(dist, name).split(path.sep).join("/")}`);
-  if (withWalletCode.length !== 1) problems.push(`the sign-in's wallet code is in ${withWalletCode.length} files of the build (it must be in exactly one, fetched only when "Sign in" is pressed)`);
 
   const labels: Array<[string, number, number]> = [
     ["initial JavaScript (gzip)", sizes.script, BUDGETS.script],

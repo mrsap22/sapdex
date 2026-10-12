@@ -40,8 +40,7 @@ const sha = (text: string) => createHash("sha256").update(text).digest("hex");
 const made = (label: string, bytes: number) => sha(`gas test ${label}`).slice(0, bytes * 2);
 const address = (label: string) => toChecksumAddress(`0x${made(label, 20)}`);
 const txHash = (label: string) => `0x${made(label, 32)}`;
-// The rewards address is a Solana address: points are kept under one.
-const WHO = { sender: address("sender"), recipient: address("recipient"), refundTo: address("refund"), rewards: ADDR.sol };
+const WHO = { sender: address("sender"), recipient: address("recipient"), refundTo: address("refund") };
 /** Somebody else's addresses: where a request might try to send the gas, or its refund. */
 const ELSE = { recipient: address("another recipient"), refundTo: address("another refund"), sender: address("another sender") };
 
@@ -351,7 +350,7 @@ describe("POST /api/gas: whether gas can be added beside a swap", () => {
       { gas: { amount: "9", recipient: ELSE.recipient, refundTo: ELSE.refundTo, to: ASSET.sol } },
       { gasRecipient: ELSE.recipient, gasRefundTo: ELSE.refundTo, gasTo: ASSET.sol, gasFrom: ASSET.arbUsdc },
       { destinationAsset: ASSET.sol, originAsset: ASSET.arbUsdc, recipientType: "INTENTS", dry: false, appFees: [{ recipient: ELSE.recipient, fee: 100 }] },
-      { ghost: true, rewardsAddress: WHO.rewards, requestId: "a-request-key-0123456789" },
+      { ghost: true, requestId: "a-request-key-0123456789" },
     ];
     for (const extra of tricks) {
       const gas = await gasFor(h, extra);
@@ -422,7 +421,7 @@ describe("POST /api/orders with gas: two orders, each made by the one path", () 
     const screened = screening();
     const h = await start({ sanctions: screened.sanctions });
     const gas = await gasFor(h);
-    const reply = await h.order({ ...PEOPLE, rewardsAddress: WHO.rewards, gas: askedFor(gas) });
+    const reply = await h.order({ ...PEOPLE, gas: askedFor(gas) });
     expect(reply.status).toBe(201);
     const order = asOrder(reply);
     const gasId = gasIdOf(order.id);
@@ -431,10 +430,10 @@ describe("POST /api/orders with gas: two orders, each made by the one path", () 
     expect(h.store.ids().sort()).toEqual([order.id, gasId].sort());
     const [swap, added] = [record(h, order.id), record(h, gasId)];
     // The swap is the swap it always was, and says that its gas order was made.
-    expect(swap).toMatchObject({ from: { id: ASSET.baseEth }, to: { id: ASSET.arbUsdc }, amountIn: SWAP_AMOUNT, recipient: WHO.recipient, refundTo: WHO.refundTo, rewardsAddress: WHO.rewards, confidentiality: "basic", gas: "made" });
+    expect(swap).toMatchObject({ from: { id: ASSET.baseEth }, to: { id: ASSET.arbUsdc }, amountIn: SWAP_AMOUNT, recipient: WHO.recipient, refundTo: WHO.refundTo, confidentiality: "basic", gas: "made" });
     expect("gasOrder" in swap).toBe(false);
     // The gas order: the same coin paid with, the same receiving address and refund address; the chain's own coin; private.
-    expect(added).toMatchObject({ gasOrder: true, pay: "manual", from: swap.from, to: { id: ARB_ETH, symbol: "ETH", chain: "arb", contract: null }, amountIn: GAS_AMOUNT, amountInUsd: "3", recipient: WHO.recipient, refundTo: WHO.refundTo, rewardsAddress: WHO.rewards, confidentiality: "basic", slippageBps: 100, termsVersion: swap.termsVersion });
+    expect(added).toMatchObject({ gasOrder: true, pay: "manual", from: swap.from, to: { id: ARB_ETH, symbol: "ETH", chain: "arb", contract: null }, amountIn: GAS_AMOUNT, amountInUsd: "3", recipient: WHO.recipient, refundTo: WHO.refundTo, confidentiality: "basic", slippageBps: 100, termsVersion: swap.termsVersion });
     expect([added.recipient, added.refundTo]).toEqual([swap.recipient, swap.refundTo]);
     expect(added.to.chain).toBe(swap.to.chain);
     // It holds nothing that leads back to its swap, and no gas of its own.
@@ -452,7 +451,7 @@ describe("POST /api/orders with gas: two orders, each made by the one path", () 
       expect(h.poller.holds(made.id)).toBe(true);
     }
     expect((swap.quoteResponse as { signature: string }).signature).not.toBe((added.quoteResponse as { signature: string }).signature);
-    expect(screened.asked).toEqual([[WHO.recipient, WHO.refundTo, WHO.rewards], [WHO.recipient, WHO.refundTo, WHO.rewards]]);
+    expect(screened.asked).toEqual([[WHO.recipient, WHO.refundTo], [WHO.recipient, WHO.refundTo]]);
 
     // The provider was asked for two real orders, each in the class real orders have: the swap, then the gas order.
     expect(live(h)).toMatchObject([
@@ -465,7 +464,7 @@ describe("POST /api/orders with gas: two orders, each made by the one path", () 
     // What the person is told: the swap, and with it the gas order as it stands, an order of its own.
     expect(order).toMatchObject({ id: order.id, status: "waiting", depositAddress: swap.depositAddress, recipient: WHO.recipient, routing: "confidential" });
     expect("gasOrder" in order).toBe(false);
-    expect(order.gas).toEqual({ made: true, order: expect.objectContaining({ id: gasId, gasOrder: true, status: "waiting", depositAddress: added.depositAddress, depositsOpen: true, amountIn: GAS_AMOUNT, recipient: WHO.recipient, refundTo: WHO.refundTo, routing: "confidential", rewardsAddress: WHO.rewards, to: added.to, from: added.from, deadline: added.deadline }) });
+    expect(order.gas).toEqual({ made: true, order: expect.objectContaining({ id: gasId, gasOrder: true, status: "waiting", depositAddress: added.depositAddress, depositsOpen: true, amountIn: GAS_AMOUNT, recipient: WHO.recipient, refundTo: WHO.refundTo, routing: "confidential", to: added.to, from: added.from, deadline: added.deadline }) });
     const shown = (order.gas as { order: OrderView }).order;
     expect("gas" in shown).toBe(false);
     expect("ghost" in shown).toBe(false);
@@ -482,7 +481,7 @@ describe("POST /api/orders with gas: two orders, each made by the one path", () 
       { gas: { ...gas, ...elsewhere } },
       { gas: { ...gas, to: ASSET.sol, from: ASSET.arbUsdc, pay: "manual" } },
       { gas: { ...gas, confidentiality: "public", withoutPrivate: true, routing: "public", privacy: "public" } },
-      { gas: { ...gas, slippageBps: 500, rewardsAddress: address("other rewards"), ghost: true, id: "A".repeat(27), gasOrder: false, termsVersion: "none" } },
+      { gas: { ...gas, slippageBps: 500, ghost: true, id: "A".repeat(27), gasOrder: false, termsVersion: "none" } },
       { gas: { ...gas, destinationAsset: ASSET.sol, originAsset: ASSET.arbUsdc, recipientType: "INTENTS", refundType: "INTENTS", appFees: [{ recipient: ELSE.recipient, fee: 100 }], deadline: "2030-01-01T00:00:00.000Z" } },
       { gas: { ...gas, swap: elsewhere, order: elsewhere, quote: elsewhere, input: elsewhere } },
       { gas, gasRecipient: ELSE.recipient, gasRefundTo: ELSE.refundTo, gasSender: ELSE.sender, gasTo: ASSET.sol, gasFrom: ASSET.arbUsdc },
@@ -498,7 +497,7 @@ describe("POST /api/orders with gas: two orders, each made by the one path", () 
       // The gas order is where the swap is, to the letter, and the swap is where the person said.
       expect([added.recipient, added.refundTo], why).toEqual([WHO.recipient, WHO.refundTo]);
       expect([swap.recipient, swap.refundTo], why).toEqual([WHO.recipient, WHO.refundTo]);
-      expect(added, why).toMatchObject({ gasOrder: true, from: { id: ASSET.baseEth }, to: { id: ARB_ETH }, pay: "manual", amountIn: GAS_AMOUNT, confidentiality: "basic", slippageBps: 100, rewardsAddress: null });
+      expect(added, why).toMatchObject({ gasOrder: true, from: { id: ASSET.baseEth }, to: { id: ARB_ETH }, pay: "manual", amountIn: GAS_AMOUNT, confidentiality: "basic", slippageBps: 100 });
       expect("ghost" in added, why).toBe(false);
       expect(added.id, why).toBe(gasIdOf(swap.id));
       // What the provider was asked for it, and what it signed.
@@ -689,7 +688,7 @@ describe("POST /api/orders with gas: two orders, each made by the one path", () 
     const h = await start({ sanctions: screened.sanctions });
     const named = { sender: ELSE.sender, connectedWallets: [ELSE.sender] };
     const gas = askedFor(await gasFor(h, named));
-    const order = asOrder(await h.order({ ...PEOPLE, ...named, rewardsAddress: WHO.rewards, gas: { ...gas, ...named } }));
+    const order = asOrder(await h.order({ ...PEOPLE, ...named, gas: { ...gas, ...named } }));
     const [swap, added] = [record(h, order.id), record(h, gasIdOf(order.id))];
     expect(order).toMatchObject({ pay: "manual", gas: { made: true, order: { pay: "manual", depositAddress: added.depositAddress } } });
     expect(added).toMatchObject({ pay: "manual", recipient: WHO.recipient, refundTo: WHO.refundTo, deadline: swap.deadline });
@@ -697,8 +696,8 @@ describe("POST /api/orders with gas: two orders, each made by the one path", () 
     expect(h.tap.quotes.length).toBeGreaterThan(0);
     for (const sent of h.tap.quotes) expect(Object.keys(sent)).not.toContain("connectedWallets");
     expect(carries(JSON.stringify(h.tap.quotes) + JSON.stringify([swap, added]), ELSE.sender)).toBe(false);
-    // Each order's screening covers its receiving, refund and rewards address, and no other.
-    expect(screened.asked).toEqual([[WHO.recipient, WHO.refundTo, WHO.rewards], [WHO.recipient, WHO.refundTo, WHO.rewards]]);
+    // Each order's screening covers its receiving and refund address, and no other.
+    expect(screened.asked).toEqual([[WHO.recipient, WHO.refundTo], [WHO.recipient, WHO.refundTo]]);
   });
 });
 
@@ -810,13 +809,13 @@ describe("whatever stops the gas order, the swap is made and stands", () => {
     await how.arrange?.(h);
     const from = how.ip === undefined ? {} : { ip: how.ip };
     const asked = askedFor(await gasFor(h, {}, from));
-    const reply = await h.order({ ...PEOPLE, rewardsAddress: WHO.rewards, gas: how.gas?.(asked) ?? asked, requestId: "the-one-request-0123456789" }, from);
+    const reply = await h.order({ ...PEOPLE, gas: how.gas?.(asked) ?? asked, requestId: "the-one-request-0123456789" }, from);
 
     // The swap is made, whole: an order like any other, waiting for its deposit.
     expect(reply.status).toBe(201);
     const order = asOrder(reply);
     const swap = record(h, order.id);
-    expect(order).toMatchObject({ status: "waiting", depositsOpen: true, depositAddress: swap.depositAddress, amountIn: SWAP_AMOUNT, recipient: WHO.recipient, refundTo: WHO.refundTo, rewardsAddress: WHO.rewards, routing: "confidential", to: { id: ASSET.arbUsdc } });
+    expect(order).toMatchObject({ status: "waiting", depositsOpen: true, depositAddress: swap.depositAddress, amountIn: SWAP_AMOUNT, recipient: WHO.recipient, refundTo: WHO.refundTo, routing: "confidential", to: { id: ASSET.arbUsdc } });
     expect(swap).toMatchObject({ recipient: WHO.recipient, refundTo: WHO.refundTo, confidentiality: "basic", state: { status: "waiting" }, screening: { result: "clear" } });
     expect(h.poller.holds(order.id)).toBe(true);
     // And it is told, in one plain fact, that gas was not added. Its record says the same, for every later look.
@@ -842,7 +841,7 @@ describe("whatever stops the gas order, the swap is made and stands", () => {
     how.after?.(h, order);
 
     // A retry of the same request is answered with the same swap and the same fact, and makes nothing.
-    const again = await h.order({ ...PEOPLE, rewardsAddress: WHO.rewards, gas: how.gas?.(asked) ?? asked, requestId: "the-one-request-0123456789", reviewed: { amountOut: swap.amountOut, minAmountOut: swap.minAmountOut, totalFeeBps: 20, routing: "confidential" } }, from);
+    const again = await h.order({ ...PEOPLE, gas: how.gas?.(asked) ?? asked, requestId: "the-one-request-0123456789", reviewed: { amountOut: swap.amountOut, minAmountOut: swap.minAmountOut, totalFeeBps: 20, routing: "confidential" } }, from);
     expect([again.status, again.body.id, again.body.gas]).toEqual([200, order.id, { made: false }]);
     expect(h.store.ids()).toEqual([order.id]);
     expect(live(h)).toHaveLength(how.asked ?? 2);

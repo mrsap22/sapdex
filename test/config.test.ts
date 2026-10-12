@@ -2,16 +2,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { toChecksumAddress } from "../shared/addresses.ts";
-import { RESERVE_ASSET } from "../shared/rewards.ts";
 import { ConfigError, DEFAULT_BLOCKED_COUNTRIES, describeConfig, DEV_FEE_RECIPIENT, isSupportContact, loadConfig } from "../server/config.ts";
 
 const FEE = "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045";
-// Solana addresses made up for these tests (32 bytes in base58): a coin's mint, a wallet, and another wallet.
+// Solana addresses made up for these tests (32 bytes in base58): a coin's mint, and a wallet.
 const SOL_MINT = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB";
 const SOL_WALLET = "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU";
-const SOL_OTHER = "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM";
-/** The ZEC that NEAR's Omni Bridge issues on Solana: the coin rewards are paid in. */
-const ZEC_ON_SOLANA = "A7bdiYdS5GjqGFtxf17ppRHtDKPkkRqbKtR27dxvQXaS";
 const KEY = "aaaaaaaaaaaa.bbbbbbbbbbbb.cccccccccccc";
 const production = (extra: Record<string, string> = {}) => ({ NODE_ENV: "production", DATA_DIR: "/data", TRUST_PROXY_HOPS: "1", FEE_RECIPIENT: FEE, ...extra });
 /** The same with a fee set, which is when the fee recipient is read at all. */
@@ -56,7 +52,7 @@ describe("configuration", () => {
     expect(config.feeRecipient).toBeNull();
     expect(loadConfig(charging()).feeRecipient).toBe(FEE.toLowerCase());
     expect([...config.blockedCountries].sort()).toEqual([...DEFAULT_BLOCKED_COUNTRIES].sort());
-    expect(Object.keys(config.rpcUrls).sort()).toEqual(["arb", "base", "bsc", "eth", "sol"]);
+    expect(Object.keys(config.rpcUrls).sort()).toEqual(["arb", "base", "bsc", "eth"]);
   });
 
   it("blocks every country on the provider's list by default", () => {
@@ -148,12 +144,8 @@ describe("configuration", () => {
     ["SUPPORT_CONTACT http link", production({ SUPPORT_CONTACT: "http://example.org/help" }), "SUPPORT_CONTACT"],
     ["SUPPORT_CONTACT plain words", production({ SUPPORT_CONTACT: "call me maybe" }), "SUPPORT_CONTACT"],
     ["SUPPORT_CONTACT too long", production({ SUPPORT_CONTACT: `${"a".repeat(100)}@example.org` }), "SUPPORT_CONTACT"],
-    ["SOLANA_RPC_URL", production({ SOLANA_RPC_URL: "ftp://rpc.example" }), "SOLANA_RPC_URL"],
     ["TOKEN_ADDRESS that is no address", production({ TOKEN_ADDRESS: "0x1234" }), "TOKEN_ADDRESS"],
     ["TOKEN_ADDRESS that is a 0x address, as on BNB Chain", production({ TOKEN_ADDRESS: FEE }), "TOKEN_ADDRESS"],
-    ["RESERVE_ADDRESS that is a 0x address", production({ RESERVE_ADDRESS: FEE }), "RESERVE_ADDRESS"],
-    ["RESERVE_ADDRESS that is the coin's own address", production({ TOKEN_ADDRESS: SOL_MINT, RESERVE_ADDRESS: SOL_MINT }), "RESERVE_ADDRESS"],
-    ["REWARD_TOKEN_ADDRESS that is a 0x address", production({ REWARD_TOKEN_ADDRESS: FEE }), "REWARD_TOKEN_ADDRESS"],
     ["X_URL", production({ X_URL: "https://example.com/saplingdex" }), "X_URL"],
     ["X_URL script", production({ X_URL: "javascript:alert(1)" }), "X_URL"],
     ["a GitHub link on another site", production({ GITHUB_URL: "https://github.example.org/saplingdex" }), "GITHUB_URL"],
@@ -304,19 +296,19 @@ describe("configuration", () => {
     });
   });
 
-  describe("the coin, the pool's wallet and the coin rewards are paid in: all on Solana", () => {
-    it("each is a Solana address, kept exactly as it is written", () => {
-      const config = loadConfig(production({ TOKEN_ADDRESS: SOL_MINT, RESERVE_ADDRESS: SOL_WALLET }));
-      expect(config).toMatchObject({ tokenAddress: SOL_MINT, reserveAddress: SOL_WALLET, rewardTokenAddress: ZEC_ON_SOLANA });
+  describe("the coin: on Solana", () => {
+    it("it is a Solana address, kept exactly as it is written", () => {
+      const config = loadConfig(production({ TOKEN_ADDRESS: SOL_MINT }));
+      expect(config).toMatchObject({ tokenAddress: SOL_MINT });
       // Spaces round it are not part of it.
       expect(loadConfig(production({ TOKEN_ADDRESS: ` ${SOL_MINT} ` })).tokenAddress).toBe(SOL_MINT);
-      // None is set until the operator sets it: the site then has no token page and shows no pool.
-      expect(loadConfig(production())).toMatchObject({ tokenAddress: null, reserveAddress: null });
-      for (const empty of ["", "  "]) expect(loadConfig(production({ TOKEN_ADDRESS: empty, RESERVE_ADDRESS: empty }))).toMatchObject({ tokenAddress: null, reserveAddress: null });
+      // None is set until the operator sets it: the site then has no token page.
+      expect(loadConfig(production())).toMatchObject({ tokenAddress: null });
+      for (const empty of ["", "  "]) expect(loadConfig(production({ TOKEN_ADDRESS: empty }))).toMatchObject({ tokenAddress: null });
     });
 
-    it.each(["TOKEN_ADDRESS", "RESERVE_ADDRESS", "REWARD_TOKEN_ADDRESS"])("%s: an address of any other kind stops the start, with a line that names the setting and never repeats the value", (name) => {
-      // A 0x address (as the coin and the pool had on BNB Chain), in either spelling; a NEAR account; a Zcash address; a Solana address with a character changed, cut short or run on; a program's own address.
+    it.each(["TOKEN_ADDRESS"])("%s: an address of any other kind stops the start, with a line that names the setting and never repeats the value", (name) => {
+      // A 0x address, in either spelling; a NEAR account; a Zcash address; a Solana address with a character changed, cut short or run on; a program's own address.
       for (const wrong of [FEE, FEE.toLowerCase(), "0x1234", "wrap.near", "t1Hsc1LR8yKnbbe3twRp88p6vFfC5t7DLbs", SOL_MINT.replace("E", "0"), SOL_MINT.slice(0, 20), `${SOL_MINT}${SOL_MINT}`, "11111111111111111111111111111111", "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"]) {
         const message = problem(production({ [name]: wrong }));
         expect(message, wrong).toMatch(new RegExp(`^${name}: must be a Solana address`));
@@ -326,44 +318,18 @@ describe("configuration", () => {
       }
     });
 
-    it("the pool's wallet is a wallet: not the coin's own address", () => {
-      expect(problem(production({ TOKEN_ADDRESS: SOL_MINT, RESERVE_ADDRESS: SOL_MINT }))).toBe("RESERVE_ADDRESS: must be the pool's wallet, not the coin's own address");
-      expect(loadConfig(production({ TOKEN_ADDRESS: SOL_MINT, RESERVE_ADDRESS: SOL_WALLET })).reserveAddress).toBe(SOL_WALLET);
-    });
-
-    it("the coin rewards are paid in is ZEC on Solana unless it is set", () => {
-      expect(RESERVE_ASSET).toMatchObject({ chain: "sol", symbol: "ZEC", decimals: 8, contract: ZEC_ON_SOLANA });
-      expect(loadConfig(production()).rewardTokenAddress).toBe(ZEC_ON_SOLANA);
-      expect(loadConfig({ NODE_ENV: "development" }).rewardTokenAddress).toBe(ZEC_ON_SOLANA);
-      // Left empty is left unset.
-      for (const empty of ["", "  "]) expect(loadConfig(production({ REWARD_TOKEN_ADDRESS: empty })).rewardTokenAddress).toBe(ZEC_ON_SOLANA);
-      // Set, it is that mint.
-      expect(loadConfig(production({ REWARD_TOKEN_ADDRESS: SOL_OTHER })).rewardTokenAddress).toBe(SOL_OTHER);
-      // The pool's wallet is a wallet and the reward coin a mint: one address is not both. Nor is the reward coin the site's own coin.
-      expect(problem(production({ RESERVE_ADDRESS: SOL_WALLET, REWARD_TOKEN_ADDRESS: SOL_WALLET }))).toBe("REWARD_TOKEN_ADDRESS: must be the reward coin's mint, not the pool's wallet");
-      expect(problem(production({ TOKEN_ADDRESS: SOL_MINT, REWARD_TOKEN_ADDRESS: SOL_MINT }))).toBe("REWARD_TOKEN_ADDRESS: must be the reward coin's mint, not the site's own coin");
-    });
-
-    it("the settings that tied the coin and the pool to BNB Chain are gone: setting one changes nothing, and nothing reads it", () => {
+    it("a setting the server does not read changes nothing, whatever it is set to: a host's variables may hold one, and the server starts all the same", () => {
       const before = loadConfig(production({ TOKEN_ADDRESS: SOL_MINT }));
-      const after = loadConfig(production({ TOKEN_ADDRESS: SOL_MINT, TOKEN_PAIR_ADDRESS: "not even an address", DEXSCREENER_URL: "not a link", REOWN_PROJECT_ID: "abc" }));
+      const after = loadConfig(production({ TOKEN_ADDRESS: SOL_MINT, TOKEN_PAIR_ADDRESS: "not even an address", DEXSCREENER_URL: "not a link", REOWN_PROJECT_ID: "abc", RESERVE_ADDRESS: SOL_WALLET, REWARD_TOKEN_ADDRESS: SOL_MINT, SOLANA_RPC_URL: "https://node.example.org/key" }));
       expect(after).toEqual(before);
-      for (const gone of ["tokenPairAddress", "dexscreenerUrl", "reownProjectId"]) expect(before).not.toHaveProperty(gone);
+      // Nor does one that would once have been refused: an address of the wrong kind, the coin's own address, a link that is no link.
+      expect(loadConfig(production({ TOKEN_ADDRESS: SOL_MINT, RESERVE_ADDRESS: FEE, REWARD_TOKEN_ADDRESS: "near", SOLANA_RPC_URL: "ftp://rpc.example" }))).toEqual(before);
+      expect(loadConfig(production({ TOKEN_ADDRESS: SOL_MINT, RESERVE_ADDRESS: SOL_MINT }))).toEqual(before);
+      for (const gone of ["tokenPairAddress", "dexscreenerUrl", "reownProjectId", "reserveAddress", "rewardTokenAddress"]) expect(before).not.toHaveProperty(gone);
+      expect(Object.keys(before.rpcUrls).sort()).toEqual(["arb", "base", "bsc", "eth"]);
+      expect(JSON.stringify(describeConfig(after))).not.toMatch(/node\.example\.org|solana|reserve/i);
       const source = fs.readFileSync(path.resolve("server", "config.ts"), "utf8");
-      expect(source).not.toMatch(/TOKEN_PAIR_ADDRESS|DEXSCREENER|REOWN|checkAddress\("bsc"/);
-    });
-
-    it("Solana's node is a setting that is never printed: the start-up line says only whether it was set", () => {
-      const secret = "https://mainnet.rpc-provider.example/v2/s3cr3t-key-12345";
-      const told = JSON.stringify(describeConfig(loadConfig(production({ SOLANA_RPC_URL: secret }))));
-      expect(told).not.toContain("s3cr3t");
-      expect(told).not.toContain("rpc-provider.example");
-      expect(describeConfig(loadConfig(production({ SOLANA_RPC_URL: secret })))).toMatchObject({ solanaRpcSet: true });
-      expect(describeConfig(loadConfig(production()))).toMatchObject({ solanaRpcSet: false });
-      expect(Object.keys(describeConfig(loadConfig(production())).rpcHosts as object)).not.toContain("sol");
-      // A value that is no https address stops the start, and is not repeated.
-      expect(problem(production({ SOLANA_RPC_URL: "ftp://rpc.example/s3cr3t" }))).toMatch(/^SOLANA_RPC_URL: /);
-      expect(problem(production({ SOLANA_RPC_URL: "ftp://rpc.example/s3cr3t" }))).not.toContain("s3cr3t");
+      expect(source).not.toMatch(/TOKEN_PAIR_ADDRESS|DEXSCREENER|REOWN|RESERVE_ADDRESS|REWARD_TOKEN|SOLANA_RPC|checkAddress\("bsc"/);
     });
   });
 
@@ -414,14 +380,14 @@ describe("configuration", () => {
   });
 
   it("keeps the site's own address as an origin, and has none built in: unset, the site names no address of its own", () => {
-    // Told nothing, the site has no address, on the live site as anywhere, and the setting is known not to have been made.
-    expect(loadConfig(production())).toMatchObject({ siteUrl: null, siteUrlSet: false });
-    expect(loadConfig(production({ SITE_URL: "  " }))).toMatchObject({ siteUrl: null, siteUrlSet: false });
-    // Set, it is taken as given, and is known to have been set (the sign-in then names it and nothing else).
-    expect(loadConfig(production({ SITE_URL: "https://saplingdex.example" }))).toMatchObject({ siteUrl: "https://saplingdex.example", siteUrlSet: true });
+    // Told nothing, the site has no address, on the live site as anywhere.
+    expect(loadConfig(production())).toMatchObject({ siteUrl: null });
+    expect(loadConfig(production({ SITE_URL: "  " }))).toMatchObject({ siteUrl: null });
+    // Set, it is taken as given.
+    expect(loadConfig(production({ SITE_URL: "https://saplingdex.example" }))).toMatchObject({ siteUrl: "https://saplingdex.example" });
     // No address is written into the code that loads the settings.
     expect(fs.readFileSync(path.resolve("server", "config.ts"), "utf8")).not.toMatch(/DEFAULT_(?:SITE|X|GITHUB)_URL/);
-    for (const env of [{ NODE_ENV: "development" }, { NODE_ENV: "test" }]) expect(loadConfig(env)).toMatchObject({ siteUrl: null, siteUrlSet: false });
+    for (const env of [{ NODE_ENV: "development" }, { NODE_ENV: "test" }]) expect(loadConfig(env)).toMatchObject({ siteUrl: null });
     expect(loadConfig(production({ SITE_URL: "https://SaplingDex.example/" })).siteUrl).toBe("https://saplingdex.example");
     expect(loadConfig(production({ SITE_URL: "https://saplingdex.example:8443" })).siteUrl).toBe("https://saplingdex.example:8443");
   });

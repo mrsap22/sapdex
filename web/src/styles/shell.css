@@ -307,7 +307,7 @@
   text-wrap: pretty;
 }
 
-/* A page with one thing to say. It opens as Track order and Rewards do: a tag with its rule, a large title, a line. */
+/* A page with one thing to say. It opens as Track order does: a tag with its rule, a large title, a line. */
 .notice-page {
   position: relative;
   display: grid;

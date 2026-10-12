@@ -19,7 +19,6 @@ import { createOneClick, type OneClick, type UpstreamResult } from "../server/on
 import { createPoller, type Poller } from "../server/poller.ts";
 import { createLimiters, type Limit, type LimitName, type Limiters } from "../server/ratelimit.ts";
 import { createRpc, type Rpc, type RpcCall, type RpcResult } from "../server/rpc.ts";
-import { createRewards, createSignIn, type Rewards, type SignIn } from "../server/rewards.ts";
 import { createStaticSanctions, type Sanctions } from "../server/sanctions.ts";
 import { createSessionIssuer } from "../server/session.ts";
 import { createSettler } from "../server/settle.ts";
@@ -71,31 +70,6 @@ export interface FakeRpc extends Rpc {
   native: Map<string, bigint>;
   down: boolean;
   calls: Array<{ chain: string; call: RpcCall }>;
-  /** Solana: what a wallet holds of a mint, as the amounts of its token accounts, keyed "mint:owner". Absent means the wallet has no account for the mint. */
-  solHeld: Map<string, bigint[]>;
-  /** Solana: a mint's decimals. A mint that is not here is unknown to the chain. */
-  solDecimals: Map<string, number>;
-  /** Solana: what getTransaction answers, keyed by signature. Absent means no such transaction (or not final yet). */
-  solTxs: Map<string, unknown>;
-  /** Solana: when set, what every account says its mint is, whatever was asked for (an endpoint answering about another coin). */
-  solWrongMint: string | null;
-  solDown: boolean;
-  solCalls: RpcCall[];
-}
-
-/** The ZEC mint on Solana that the site's pool is counted in, as shared/rewards.ts names it. */
-export const ZEC_MINT = "A7bdiYdS5GjqGFtxf17ppRHtDKPkkRqbKtR27dxvQXaS";
-/** The program that keeps ordinary token accounts on Solana. */
-export const TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
-
-/** One entry of a Solana transaction's list of token balances, before or after: what a wallet held of a mint in one account. */
-export function solBalance(owner: string, amount: bigint, options: { mint?: string; accountIndex?: number; programId?: string } = {}): Record<string, unknown> {
-  return { accountIndex: options.accountIndex ?? 1, mint: options.mint ?? ZEC_MINT, owner, programId: options.programId ?? TOKEN_PROGRAM, uiTokenAmount: { amount: amount.toString(), decimals: 8 } };
-}
-
-/** A Solana transaction that went through, as getTransaction answers it: only what the payout check reads. */
-export function solTx(before: Record<string, unknown>[], after: Record<string, unknown>[], err: unknown = null): Record<string, unknown> {
-  return { slot: 1, meta: { err, preTokenBalances: before, postTokenBalances: after }, transaction: {} };
 }
 
 export function createFakeRpc(): FakeRpc {
@@ -109,34 +83,6 @@ export function createFakeRpc(): FakeRpc {
     native: new Map(),
     down: false,
     calls: [],
-    solHeld: new Map(),
-    solDecimals: new Map([[ZEC_MINT, 8]]),
-    solTxs: new Map(),
-    solWrongMint: null,
-    solDown: false,
-    solCalls: [],
-    async solana(calls: RpcCall[]): Promise<RpcResult[]> {
-      return calls.map((call): RpcResult => {
-        rpc.solCalls.push(call);
-        if (rpc.solDown) return { ok: false, code: -32603, message: "RPC unavailable" };
-        if (call.method === "getTokenAccountsByOwner") {
-          const owner = String(call.params[0]);
-          const mint = String((call.params[1] as { mint?: string }).mint);
-          const decimals = rpc.solDecimals.get(mint) ?? 0;
-          const value = (rpc.solHeld.get(`${mint}:${owner}`) ?? []).map((amount, index) => ({
-            pubkey: `account${index}`,
-            account: { owner: TOKEN_PROGRAM, data: { program: "spl-token", parsed: { type: "account", info: { mint: rpc.solWrongMint ?? mint, owner, tokenAmount: { amount: amount.toString(), decimals } } } } },
-          }));
-          return { ok: true, result: { context: { slot: 1 }, value } };
-        }
-        if (call.method === "getTokenSupply") {
-          const decimals = rpc.solDecimals.get(String(call.params[0]));
-          return decimals === undefined ? { ok: false, code: -32602, message: "RPC error" } : { ok: true, result: { context: { slot: 1 }, value: { amount: "1000000000000", decimals } } };
-        }
-        if (call.method === "getTransaction") return { ok: true, result: rpc.solTxs.get(String(call.params[0])) ?? null };
-        return { ok: false, code: -32601, message: "method not found" };
-      });
-    },
     async batch(chain: WalletChain, calls: RpcCall[]): Promise<RpcResult[]> {
       if (rpc.beforeBatch) await rpc.beforeBatch();
       return calls.map((call): RpcResult => {
@@ -225,9 +171,7 @@ export interface Harness {
   tap: ProviderTap;
   rpc: FakeRpc;
   store: OrderStore;
-  rewards: Rewards;
   stats: Stats;
-  signIn: SignIn;
   poller: Poller;
   limiters: Limiters;
   tokens: TokenService;
@@ -338,13 +282,11 @@ export async function harness(options: HarnessOptions = {}): Promise<Harness> {
   const realProvider = options.network ? createOneClick({ apiKey: config.oneClickApiKey, maxPerMin: 1000, allowLive: true, log, fetchImpl: options.network, now }) : null;
   const realRpc = options.network ? createRpc({ urls: config.rpcUrls, fetchImpl: options.network }) : null;
   const tokens = createTokenService({ oneclick: realProvider ?? oneclick, rpc: realRpc ?? rpc, alerts: alertSink, log, dataDir, excludedChains: config.excludedChains, now });
-  const rewards = createRewards(dataDir);
-  const signIn = createSignIn();
-  // Each saved state is put to the site's totals, to the points record and, for an order made in Ghost
+  // Each saved state is put to the site's totals and, for an order made in Ghost
   // mode that has ended, to the deletion of its record, as the server itself does it (see server/boot.ts).
   const stats = createStats(dataDir, { now });
   const store: OrderStore = createOrderStore(dataDir, { now, onState: (record) => void settler.settle(record) });
-  const settler = createSettler({ store, stats, rewards, log });
+  const settler = createSettler({ store, stats, log });
   const poller = createPoller({ store, oneclick: realProvider ?? oneclick, alerts: alertSink, log, now });
   const sweep = createSweeper({ store, poller, log, now, settler });
   const limiters = createLimiters(now, options.limits);
@@ -363,8 +305,6 @@ export async function harness(options: HarnessOptions = {}): Promise<Harness> {
     rpc: realRpc ?? rpc,
     limiters,
     sessions: createSessionIssuer(),
-    rewards,
-    signIn,
     stats,
     site: options.site ?? null,
     now,
@@ -417,9 +357,7 @@ export async function harness(options: HarnessOptions = {}): Promise<Harness> {
     tap,
     rpc,
     store,
-    rewards,
     stats,
-    signIn,
     poller,
     limiters,
     tokens,

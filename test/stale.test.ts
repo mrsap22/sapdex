@@ -44,16 +44,13 @@ describe("a part of the site that fails to load", () => {
     expect([...first.kept.values()].every((value) => /^\d+$/.test(value))).toBe(true);
   });
 
-  it("is heard for every late-loaded part, and is told apart from a sign-in the server refused", () => {
+  it("is heard for every late-loaded part, and is told apart from a request the server refused", () => {
     const heard: Array<() => void> = [];
     const stop = watchForNewVersion({ addEventListener: (name: string, listener: () => void) => void (name === "vite:preloadError" && heard.push(listener)), removeEventListener: () => undefined } as never);
     expect(heard).toHaveLength(1);
     stop();
-    for (const text of ["Failed to fetch dynamically imported module: https://example.org/assets/sign-in-abc.js", "error loading dynamically imported module", "Importing a module script failed.", "Unable to preload CSS for /assets/docs-1.css"]) expect(isLoadFailure(new TypeError(text)), text).toBe(true);
-    for (const other of [new Error("That sign-in did not work."), new Error("User rejected the request"), "nothing", null]) expect(isLoadFailure(other), String(other)).toBe(false);
-    // The Rewards page: a sign-in module that cannot be fetched says nothing of a sign-in that was never tried.
-    const rewards = fs.readFileSync(path.resolve("web", "src", "stores", "rewards.ts"), "utf8");
-    expect(rewards).toMatch(/set\(\{ error: null \}\);[^}]*\(\{ findWallets \} = await import\("\.\.\/solana\/sign-in\.ts"\)\);\s*\} catch \{\s*partFailedToLoad\(\);\s*return;/);
+    for (const text of ["Failed to fetch dynamically imported module: https://example.org/assets/OrderPage-abc.js", "error loading dynamically imported module", "Importing a module script failed.", "Unable to preload CSS for /assets/docs-1.css"]) expect(isLoadFailure(new TypeError(text)), text).toBe(true);
+    for (const other of [new Error("Your session expired. Reload and try again."), new Error("Not found."), "nothing", null]) expect(isLoadFailure(other), String(other)).toBe(false);
     // The page watches from its first moment, and its pages' own boundary answers the same way.
     expect(fs.readFileSync(path.resolve("web", "src", "main.tsx"), "utf8")).toContain("watchForNewVersion();");
     expect(fs.readFileSync(path.resolve("web", "src", "App.tsx"), "utf8")).toContain("if (isLoadFailure(error)) partFailedToLoad();");

@@ -18,7 +18,7 @@ import { CoinPicker } from "../web/src/components/CoinPicker.tsx";
 import { GHOST_ALWAYS, GHOST_CHANGES, GHOST_STILL, GhostSheet } from "../web/src/components/GhostSheet.tsx";
 import { MenuSheet } from "../web/src/components/MenuSheet.tsx";
 import { LeavesSite, OutboundLink } from "../web/src/components/OutboundLink.tsx";
-import { GHOST_ORDER_LINE, GHOST_REWARDS_HINT, ReviewSheet } from "../web/src/components/ReviewSheet.tsx";
+import { GHOST_ORDER_LINE, ReviewSheet } from "../web/src/components/ReviewSheet.tsx";
 import { Header } from "../web/src/components/Shell.tsx";
 import { SocialLinks } from "../web/src/components/Social.tsx";
 import { SwapCard } from "../web/src/components/SwapCard.tsx";
@@ -28,13 +28,6 @@ import { usePicker } from "../web/src/stores/picker.ts";
 import { useSheet } from "../web/src/stores/sheet.ts";
 import { useSwap } from "../web/src/stores/swap.ts";
 import { useTokens } from "../web/src/stores/tokens.ts";
-
-// The one module that speaks to a wallet: the Rewards page's sign-in. Here it only notes that it was fetched, and finds no wallet.
-const walletCode = vi.hoisted(() => ({ signIn: 0 }));
-vi.mock("../web/src/solana/sign-in.ts", () => {
-  walletCode.signIn += 1;
-  return { findWallets: () => [] };
-});
 
 const root = path.resolve("web", "src");
 const read = (file: string) => fs.readFileSync(path.join(root, file), "utf8");
@@ -166,8 +159,7 @@ async function loaded() {
   const swap = await import("../web/src/stores/swap.ts");
   const stale = await import("../web/src/lib/stale.ts");
   const theme = await import("../web/src/theme.ts");
-  const rewards = await import("../web/src/stores/rewards.ts");
-  return { kept, ghost, orders, tokens, app, swap, stale, theme, rewards };
+  return { kept, ghost, orders, tokens, app, swap, stale, theme };
 }
 
 const settle = async (ms = 0) => {
@@ -176,7 +168,6 @@ const settle = async (ms = 0) => {
 
 beforeEach(() => {
   vi.useFakeTimers({ now: Date.parse("2026-10-08T12:00:00.000Z") });
-  walletCode.signIn = 0;
 });
 afterEach(() => {
   vi.useRealTimers();
@@ -248,17 +239,16 @@ describe("the one thing kept: the switch itself, as a flag for this tab", () => 
 
   it("turning it off takes the flag away and loads the page again, which is what ends the mode", async () => {
     const browser = tab({ session: { ghost: "on" } });
-    const { ghost, kept, rewards } = await loaded();
+    const { ghost, kept } = await loaded();
     ghost.useGhost.getState().turnOff();
     await settle();
     expect(browser.session.keys()).toEqual([]);
     expect(ghost.useGhost.getState().on).toBe(false);
     expect(browser.dataset.ghost).toBeUndefined();
     expect(browser.reloads.count).toBe(1);
-    // Until that load the page is still held: it writes nothing, and the code that asks a wallet to sign in is not fetched.
+    // Until that load the page is still held: it writes nothing.
     expect(kept.ghostHolds()).toBe(true);
-    await rewards.useRewards.getState().signIn();
-    expect([walletCode.signIn, browser.session.writes, browser.local.writes]).toEqual([0, ["remove ghost"], []]);
+    expect([browser.session.writes, browser.local.writes]).toEqual([["remove ghost"], []]);
     // Off when it is already off: nothing happens, and nothing is loaded again.
     const idle = tab();
     const off = await loaded();
@@ -298,11 +288,6 @@ describe("nothing is kept in the browser while the mode is on", () => {
     site.theme.setTheme("light");
     // A part of the site that will not load.
     expect(site.stale.partFailedToLoad()).toBe("ask");
-    // The Rewards page's store, asked for everything it does.
-    await site.rewards.useRewards.getState().signIn();
-    await site.rewards.useRewards.getState().choose("Some wallet");
-    await site.rewards.useRewards.getState().refresh();
-    site.rewards.useRewards.getState().signOut();
     leave();
     await settle(2000);
 
@@ -409,85 +394,31 @@ describe("nothing is kept in the browser while the mode is on", () => {
   });
 });
 
-describe("no wallet is spoken to while the mode is on", () => {
-  it("the sign-in refuses: nothing is fetched by Sign in, by a choice of wallet, or by any other call of the Rewards page's store", async () => {
-    const browser = tab({ session: { ghost: "on" } });
-    const site = await loaded();
-    walletCode.signIn = 0;
-    // A press of Sign in, if one could be made: the store does not so much as say that it is looking for a wallet.
-    const said: string[] = [];
-    const stop = site.rewards.useRewards.subscribe((state) => void said.push(state.step));
-    await site.rewards.useRewards.getState().signIn();
-    // A choice among wallets that were never offered, and one made as if they had been.
-    await site.rewards.useRewards.getState().choose("Some wallet");
-    site.rewards.useRewards.setState({ step: "choosing", wallets: ["Some wallet"] });
-    said.length = 0;
-    await site.rewards.useRewards.getState().choose("Some wallet");
-    stop();
-    expect(said).toEqual([]);
-    site.rewards.useRewards.setState({ step: "idle", wallets: [] });
-    await site.rewards.useRewards.getState().signIn();
-    expect(site.rewards.useRewards.getState()).toMatchObject({ step: "idle", error: null, session: null, mine: null, wallets: [] });
-    expect(walletCode.signIn).toBe(0);
-    // Not the code that asks a wallet, and not a word to the server either: no message to sign is asked for.
-    expect(browser.asked).toEqual([]);
-  });
-
-  it("a page on which the mode was turned on where it stands refuses the same way, from that moment", async () => {
-    const browser = tab();
-    const site = await loaded();
-    await site.ghost.useGhost.getState().turnOn();
-    walletCode.signIn = 0;
-    await site.rewards.useRewards.getState().signIn();
-    expect(site.rewards.useRewards.getState()).toMatchObject({ step: "idle", error: null, session: null, wallets: [] });
-    expect([walletCode.signIn, browser.asked]).toEqual([0, []]);
-  });
-
-  it("out of the mode the same press of Sign in does fetch it: the check is one that can fail", async () => {
-    const browser = tab();
-    const site = await loaded();
-    walletCode.signIn = 0;
-    await site.rewards.useRewards.getState().signIn();
-    expect(walletCode.signIn).toBe(1);
-    // No wallet is in this browser, and the page says so. Nothing was asked of the server for it.
-    expect(site.rewards.useRewards.getState()).toMatchObject({ step: "idle", session: null, error: "No Solana wallet was found in this browser. Install one, or open this page in your wallet's own browser." });
-    expect(browser.asked).toEqual([]);
-  });
-
-  it("there is one late import of code that speaks to a wallet in the whole site, and it stands behind the mode", () => {
+describe("no wallet is spoken to, with the mode on or off", () => {
+  it("no file of the site fetches code that speaks to a wallet, late or at once, and none asks a wallet for anything", () => {
     const files = (dir: string): string[] => fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => (entry.isDirectory() ? files(path.join(dir, entry.name)) : /\.tsx?$/.test(entry.name) ? [path.join(dir, entry.name)] : []));
+    const named = (file: string) => path.relative(root, file).split(path.sep).join("/");
     const late = files(root)
-      .flatMap((file) => [...fs.readFileSync(file, "utf8").matchAll(/\bimport\(\s*["']([^"']*(?:wallet|solana|sign-in)[^"']*)["']\s*\)/g)].map((match) => `${path.relative(root, file).split(path.sep).join("/")} -> ${match[1]}`))
+      .flatMap((file) => [...fs.readFileSync(file, "utf8").matchAll(/\bimport\(\s*["']([^"']*(?:wallet|solana|sign-in)[^"']*)["']\s*\)/g)].map((match) => `${named(file)} -> ${match[1]}`))
       .sort();
-    expect(late).toEqual(["stores/rewards.ts -> ../solana/sign-in.ts"]);
-    // No other file of the site names that module at all, late or at once.
-    const naming = files(root).filter((file) => /solana\/sign-in/.test(fs.readFileSync(file, "utf8"))).map((file) => path.relative(root, file).split(path.sep).join("/"));
-    expect(naming).toEqual(["stores/rewards.ts"]);
-    // The Rewards page's store: the refusal is the first thing the sign-in does, it is asked again once the code has come, and a choice of wallet asks it too.
-    const store = read("stores/rewards.ts");
-    expect(store).toMatch(/async signIn\(\) \{\s*\/\/[^\n]*\n\s*if \(ghostHolds\(\)\) return;/);
-    expect(store.match(/import\(/g)).toHaveLength(1);
-    expect(store).toMatch(/\(\{ findWallets \} = await import\("\.\.\/solana\/sign-in\.ts"\)\);\s*\} catch \{\s*partFailedToLoad\(\);\s*return;\s*\}\s*\/\/[^\n]*\n\s*if \(ghostHolds\(\)\) return;\s*found = findWallets\(\);/);
-    expect(store).toContain('if (ghostHolds() || get().step !== "choosing") return;');
-    // And nothing is signed in a mode that came on while the wallet or the server was being asked.
-    expect(store).toMatch(/if \(ghostHolds\(\)\) \{\s*set\(\{ step: "idle", error: null \}\);\s*return;\s*\}\s*set\(\{ step: "signing" \}\);\s*signature = await signFor\(/);
-    expect(store.indexOf("if (ghostHolds()) {")).toBeLessThan(store.indexOf("signFor(wallet, account, code.message)"));
-    // The module itself loads no library, and asks no address for anything.
-    const module = read("solana/sign-in.ts");
-    expect([...module.matchAll(/^import [^\n]* from "([^"]+)";$/gm)].map((match) => match[1])).toEqual(["../lib/sign-in-logic.ts"]);
-    expect(module).not.toMatch(/\bimport\(|\bfetch\(|XMLHttpRequest|WebSocket|https?:\/\//);
-    // The wallet-connecting code that the site once had is not there.
-    for (const gone of ["wallet", "stores/wallet.ts", "stores/sent.ts", "components/WalletPay.tsx", "lib/transfer-watch.ts"]) expect(fs.existsSync(path.join(root, gone)), gone).toBe(false);
+    expect(late).toEqual([]);
+    // The pattern finds a late import when there is one: the pages the site fetches as they are opened.
+    expect(read("App.tsx").match(/\bimport\(\s*["'][^"']+["']\s*\)/g)?.length ?? 0).toBeGreaterThan(4);
+    // No file asks a wallet to be found, to connect or to sign, by any of the names those things go by.
+    const ASKS = /\bsignMessage\b|wallet-standard|standard:connect|solana:sign|window\.solana|window\.ethereum|\.request\(\{|personal_sign|eth_sign|eth_requestAccounts|signTransaction|sendTransaction|signTypedData/;
+    expect(files(root).filter((file) => ASKS.test(fs.readFileSync(file, "utf8"))).map(named)).toEqual([]);
+    for (const sample of ['wallet.features["standard:connect"].connect()', "await provider.signMessage(bytes)", 'window.dispatchEvent(new CustomEvent("wallet-standard:app-ready"))', "window.ethereum.request({ method })"]) expect(ASKS.test(sample), sample).toBe(true);
+    // There is no folder of wallet code, and none of the files such code would be kept in.
+    for (const gone of ["wallet", "solana", "stores/wallet.ts", "stores/sent.ts", "components/WalletPay.tsx", "lib/transfer-watch.ts"]) expect(fs.existsSync(path.join(root, gone)), gone).toBe(false);
   });
 
-  it("nothing the page loads at once, and no page fetched later, leads to that code except through the one sign-in", () => {
-    // The site's own imports are followed from the page's first module, late imports of pages included, and the one door left shut.
+  it("nothing the page loads at once, and no page fetched later, leads to any such code or to a library that would bring it", () => {
+    // The site's own imports are followed from the page's first module, late imports of pages included.
     const resolve = (from: string, target: string): string | null => {
       const base = path.resolve(path.dirname(from), target);
       for (const candidate of [base, `${base}.ts`, `${base}.tsx`, path.join(base, "index.ts")]) if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) return candidate;
       return null;
     };
-    const doors = new Set(["../solana/sign-in.ts"]);
     const seen = new Set<string>();
     const packages = new Set<string>();
     const queue = [path.join(root, "main.tsx")];
@@ -498,8 +429,6 @@ describe("no wallet is spoken to while the mode is on", () => {
       const text = fs.readFileSync(file, "utf8").replace(/^import type [^\n]*$/gm, "");
       for (const match of text.matchAll(/(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)["']([^"']+)["']/g)) {
         const target = match[1]!;
-        const lateDoor = doors.has(target) && new RegExp(`import\\(\\s*["']${target.replace(/[.\\/]/g, "\\$&")}["']`).test(text);
-        if (lateDoor) continue;
         if (!target.startsWith(".")) packages.add(target);
         else {
           const next = resolve(file, target);
@@ -509,7 +438,7 @@ describe("no wallet is spoken to while the mode is on", () => {
     }
     const reached = [...seen].map((file) => path.relative(root, file).split(path.sep).join("/"));
     expect(reached.length).toBeGreaterThan(50);
-    for (const expected of ["App.tsx", "components/Shell.tsx", "pages/RewardsPage.tsx", "pages/OrderPage.tsx", "stores/rewards.ts", "components/SwapCard.tsx", "lib/sign-in-logic.ts"]) expect(reached).toContain(expected);
+    for (const expected of ["App.tsx", "components/Shell.tsx", "pages/OrderPage.tsx", "pages/StatsPage.tsx", "components/ReviewSheet.tsx", "components/SwapCard.tsx", "stores/ghost.ts"]) expect(reached).toContain(expected);
     expect(reached.filter((file) => /^(solana|wallet)\//.test(file))).toEqual([]);
     // No library that connects to a wallet or speaks to a chain is among what the pages load, or among what the site is built from.
     const WALLET_LIBRARY = /^(@wagmi\/|wagmi|@reown\/|@walletconnect\/|@web3modal\/|@solana\/|@wallet-standard\/|viem|ethers)/;
@@ -531,7 +460,7 @@ describe("no wallet is spoken to while the mode is on", () => {
     // Nor later: the page stays, nothing is fetched for it, and nothing more is written.
     const written = [...browser.local.writes, ...browser.session.writes];
     await settle(10_000);
-    expect([browser.reloads.count, walletCode.signIn, browser.asked]).toEqual([0, 0, []]);
+    expect([browser.reloads.count, browser.asked]).toEqual([0, []]);
     expect([...browser.local.writes, ...browser.session.writes]).toEqual(written);
     // A second press while it is on changes nothing.
     await site.ghost.useGhost.getState().turnOn({ clear: true });
@@ -783,7 +712,7 @@ describe("the sheet that explains the mode", () => {
     expect(GHOST_CHANGES.map((change) => change.key)).toEqual(["browser", "record"]);
     const lines = [...html.matchAll(/<li class="ghost-point"><svg[^>]*aria-hidden="true">.*?<\/svg><span>([^<]*)<\/span><\/li>/g)].map((match) => words(match[1]!));
     expect(lines).toEqual([
-      "Nothing is kept in this browser but the switch itself, for this tab only, so that loading the page again does not turn it off. The Rewards sign-in is off.",
+      "Nothing is kept in this browser but the switch itself, for this tab only, so that loading the page again does not turn it off.",
       "An order you make is not listed among recent swaps, and its record is deleted from the server the moment it is delivered or refunded.",
     ]);
     expect(words(html)).toContain("While it is on, two things change.");
@@ -853,25 +782,14 @@ describe("the swap card in the mode", () => {
 
 describe("the review in the mode", () => {
   const review = (held: Parameters<typeof draw>[1] = {}) => draw(createElement(ReviewSheet), { swap: { quote: QUOTE, fetchedAt: Date.now(), amountText: "0.5", recipient: "DZrFMBPK8J5Jf6KYNDrj4mo2QYAGgQaxsxyyCwQtAWjP", refundTo: ADDRESS }, ...held });
-  const points = (html: string) => /<p class="review-address-label">Points[\s\S]*?(?=<p class="review-plain)/.exec(html)?.[0] ?? "";
 
-  it("the rewards address is there to be given, empty, with the line that says what giving it does", () => {
-    const html = points(review({ ghost: true }));
-    expect(GHOST_REWARDS_HINT).toBe("Naming an address ties this swap's points to it. Leave it empty and this swap adds no points.");
-    expect(html).toMatch(/<label for="[^"]+" class="address-label">Rewards address<\/label>/);
-    expect(html).toMatch(/<textarea[^>]*placeholder="Enter Solana address"[^>]*><\/textarea>/);
-    expect(html).toMatch(new RegExp(`<p id="[^"]+" class="address-note" data-kind="hint"><span>${GHOST_REWARDS_HINT.replace(/'/g, "&#x27;")}</span></p>`));
-    // Nothing fills it in, and nothing else is offered for it: no address of a wallet, no button that would use one.
-    expect(html).not.toMatch(/0xb559|wallet|Use connected|Choose another address/i);
-    // Whatever the card holds: the refund address is not put there, and neither is the receiving one.
-    const whole = review({ ghost: true });
-    expect(points(whole).toLowerCase()).not.toContain(ADDRESS.slice(2, 12).toLowerCase());
-    expect(points(whole)).not.toContain("DZrFMBPK8J5Jf6KYNDrj4mo2QYAGgQaxsxyyCwQtAWjP");
-    // Out of the mode the same empty field is there, with the ordinary line beneath it.
-    const plain = points(review());
-    expect(plain).toMatch(/<textarea[^>]*placeholder="Enter Solana address"[^>]*><\/textarea>/);
-    expect(plain).toContain("Optional. Without one, this swap adds no points.");
-    expect(plain).not.toContain(GHOST_REWARDS_HINT.replace(/'/g, "&#x27;"));
+  it("asks for no address, as out of the mode: it shows the two the card was given, and offers nothing of a wallet", () => {
+    const addresses = (html: string) => [...html.matchAll(/<p class="review-address-label">([^<]*)</g)].map((match) => match[1]);
+    for (const html of [review({ ghost: true }), review()]) {
+      expect(addresses(html)).toEqual(["Receiving address", "Refund address"]);
+      expect(html).not.toMatch(/<textarea|<input(?![^>]*type="checkbox")/);
+      expect(html).not.toMatch(/Use connected|Choose another address|Connect/);
+    }
   });
 
   it("says that the order is not listed and that its record is deleted, in place of the line about the Stats page, which is not true of it", () => {

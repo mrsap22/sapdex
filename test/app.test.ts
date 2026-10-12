@@ -4,7 +4,6 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { checkAddress } from "../shared/addresses.ts";
 import { isRouting, routingOf, TERMS_VERSION, type OrderView, type QuoteView } from "../shared/api.ts";
-import { swapPointsMicro } from "../shared/rewards.ts";
 import { orderDiffers } from "../web/src/lib/swap-logic.ts";
 import { toOrderView } from "../server/app.ts";
 import { createStaticGeo } from "../server/geo.ts";
@@ -175,7 +174,6 @@ describe("GET /api/config, /api/status, /api/tokens", () => {
       // How the server routes swaps. These tests run in public unless one says otherwise.
       privacyMode: "public",
       tokenAddress: null,
-      reserveAddress: null,
       sampleOrders: [],
       xUrl: "https://x.com/example",
       // The two links behind the header's icons: each travels as it was set.
@@ -190,7 +188,7 @@ describe("GET /api/config, /api/status, /api/tokens", () => {
       termsVersion: TERMS_VERSION,
     });
     expect(Object.keys(body).sort()).toEqual(
-      ["githubUrl", "paused", "practice", "privacyMode", "regionBlock", "reserveAddress", "sampleOrders", "serverNow", "session", "sessionExpiresAt", "siteUrl", "statsPage", "supportContact", "termsVersion", "testPages", "tokenAddress", "xUrl", "zecShielded"].sort(),
+      ["githubUrl", "paused", "practice", "privacyMode", "regionBlock", "sampleOrders", "serverNow", "session", "sessionExpiresAt", "siteUrl", "statsPage", "supportContact", "termsVersion", "testPages", "tokenAddress", "xUrl", "zecShielded"].sort(),
     );
     // Neither the fee setting nor where the fee is paid is among them. The fee a person is shown comes
     // from a quote, because the setting alone does not say what is charged.
@@ -670,7 +668,7 @@ describe("POST /api/orders", () => {
     expect(stored.quoteResponse.quote.depositAddress).toBe(order.depositAddress);
     // Every number kept with the order, and shown for it, is the verified quote's own: what is
     // received, the least that is received, the dollar value of what is paid and of what is received
-    // (points are counted from the first), the two fees as the provider echoed them, and its two charges.
+    // (the site's totals are counted from the first), the two fees as the provider echoed them, and its two charges.
     const signed = stored.quoteResponse.quote as Record<string, string | undefined>;
     const echoed = stored.quoteResponse.quoteRequest.appFees as { recipient: string; fee: number }[];
     const ours = echoed.filter((entry) => entry.recipient.toLowerCase() === feeRecipient.toLowerCase()).reduce((sum, entry) => sum + entry.fee, 0);
@@ -777,9 +775,9 @@ describe("POST /api/orders", () => {
     }
   });
 
-  it("screens each of the three addresses on its own: receiving, refund, and rewards", async () => {
+  it("screens each of the two addresses on its own: receiving and refund", async () => {
     // One address is on the list, and it is in one place only. Each place alone must be enough to refuse.
-    const places: Array<[Record<string, unknown>, string]> = [[{ recipient: ADDR.evm3 }, ADDR.evm3], [{ refundTo: ADDR.evm3 }, ADDR.evm3], [{ rewardsAddress: ADDR.sol }, ADDR.sol]];
+    const places: Array<[Record<string, unknown>, string]> = [[{ recipient: ADDR.evm3 }, ADDR.evm3], [{ refundTo: ADDR.evm3 }, ADDR.evm3]];
     for (const [place, listed] of places) {
       const h = await start({ sanctions: createStaticSanctions([listed]) });
       const reply = await h.order(place);
@@ -1135,11 +1133,6 @@ describe("GET /api/orders/:id", () => {
       orderCreateGlobal: { max: 120, windowMs: MINUTE },
       orderPerRecipient: { max: 10, windowMs: HOUR },
       orderRead: { max: 90, windowMs: MINUTE },
-      rewardsNonce: { max: 10, windowMs: MINUTE },
-      rewardsNonceWide: { max: 40, windowMs: MINUTE },
-      rewardsNonceGlobal: { max: 600, windowMs: MINUTE },
-      rewardsSignIn: { max: 10, windowMs: MINUTE },
-      rewardsRead: { max: 60, windowMs: MINUTE },
       orderMiss: { max: 10, windowMs: MINUTE },
       orderFind: { max: 6, windowMs: MINUTE },
       orderFindDaily: { max: 40, windowMs: DAY },
@@ -3117,49 +3110,30 @@ describe("private routing", () => {
     for (const level of ["advanced", "private", "BASIC", "", true, null]) expect(toOrderView({ ...record, confidentiality: level as never }, h.clock.t).routing, JSON.stringify(level)).toBe(IN_PUBLIC);
   });
 
-  it("counts a delivered private order's points from its dollar value, as a public order's are, whether or not a fee is taken", async () => {
-    const delivering = (h: Harness) => async (overrides: Record<string, unknown>) => {
-      const order = asOrder(await h.order(overrides));
-      h.stub.control(order.depositAddress!, "deposit");
-      h.clock.t += 30_000;
-      await h.poller.recheck(order.id);
-      expect(h.store.get(order.id)?.state.status).toBe("delivered");
-      return order;
-    };
-    // Points are kept against a Solana address.
-    const [FIRST, SECOND, THIRD] = [ADDR.sol, "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"];
-    const h = await start(PRIVATE);
-    const deliver = delivering(h);
-    const order = await deliver({ rewardsAddress: FIRST });
-    // No fee of SaplingDex's on it, and its points are there all the same: ten for each dollar its record says was paid.
-    expect(order).toMatchObject({ routing: PRIVATELY, rewardsAddress: FIRST, fees: { appBps: 0, appAmount: "0" } });
-    const entries = h.rewards.entriesFor(FIRST);
-    expect(entries).toHaveLength(1);
-    expect(entries[0]).toMatchObject({ v: 2, reasons: [] });
-    const volume = BigInt(entries[0]!.volumeUsdMicro);
-    expect(volume).toBeGreaterThan(0n);
-    expect(swapPointsMicro(h.store.get(order.id)!.amountInUsd)).toBe(volume * 10n);
-    expect(h.rewards.view(FIRST, h.clock.t)).toMatchObject({ allTimeMicro: (volume * 10n).toString(), week: { pointsMicro: (volume * 10n).toString() } });
-    // The same swap routed in public, by the person's choice: the same amount paid, and so the same points.
-    await deliver({ rewardsAddress: SECOND, withoutPrivate: true, recipient: ADDR.evm3 });
-    const counted = h.rewards.entriesFor(SECOND);
-    expect(counted).toHaveLength(1);
-    expect(counted[0]!.volumeUsdMicro).toBe(entries[0]!.volumeUsdMicro);
-    expect(h.rewards.view(SECOND, h.clock.t).allTimeMicro).toBe(h.rewards.view(FIRST, h.clock.t).allTimeMicro);
-
-    // Where the server is set to take a fee, the same swap adds the same points: no fee is part of the sum.
-    const charging = await start(PRIVATE_FEES);
-    const paidFor = await delivering(charging)({ rewardsAddress: FIRST });
-    expect(paidFor).toMatchObject({ routing: PRIVATELY, fees: { appBps: 20 } });
-    expect(charging.rewards.entriesFor(FIRST).map((entry) => entry.volumeUsdMicro)).toEqual([entries[0]!.volumeUsdMicro]);
-
-    // An order that is refunded adds nothing.
-    const refunded = asOrder(await h.order({ rewardsAddress: THIRD, recipient: ADDR.evm2, amount: "6000000000000000" }));
-    h.stub.control(refunded.depositAddress!, "refund");
+  it("reads an order stored with a rewards address, as orders once were: the order is read as any other, and nothing of that address is shown or passed on", async () => {
+    const h = await start();
+    const order = asOrder(await h.order());
+    const record = h.store.get(order.id)!;
+    // The same order as it would have been written then: with one field more.
+    const old = { ...record, id: "C".repeat(27), depositAddress: ADDR.evm3, rewardsAddress: ADDR.sol } as OrderRecord;
+    h.store.create(old);
+    const file = path.join(h.dataDir, "orders", `${old.id}.json`);
+    expect(JSON.parse(fs.readFileSync(file, "utf8")).rewardsAddress).toBe(ADDR.sol);
+    const read = await h.get(`/api/orders/${old.id}`);
+    expect(read.status).toBe(200);
+    expect(read.body).toMatchObject({ id: old.id, recipient: record.recipient, refundTo: record.refundTo });
+    expect(read.body).not.toHaveProperty("rewardsAddress");
+    expect(JSON.stringify(read.body)).not.toContain(ADDR.sol);
+    // And so it reads after a restart, straight from the file; its state is saved and it runs to its end like any order.
+    const reopened = createOrderStore(h.dataDir);
+    expect(reopened.get(old.id)).toMatchObject({ id: old.id, recipient: record.recipient });
+    expect(reopened.ids()).toContain(old.id);
+    h.stub.control(order.depositAddress!, "deposit");
     h.clock.t += 30_000;
-    await h.poller.recheck(refunded.id);
-    expect(h.store.get(refunded.id)?.state.status).toBe("refunded");
-    expect(h.rewards.entriesFor(THIRD)).toEqual([]);
+    await h.poller.recheck(order.id);
+    expect(h.store.get(order.id)?.state.status).toBe("delivered");
+    h.store.saveState(old.id, { ...old.state, status: "delivered", finishedAt: new Date(h.clock.t).toISOString() });
+    expect((await h.get(`/api/orders/${old.id}`)).body.status).toBe("delivered");
   });
 
   it("never finds a privately routed order from its deposit address: that would publish the link private routing keeps out of public records", async () => {

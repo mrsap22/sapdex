@@ -51,7 +51,7 @@ export default defineConfig({
           // every piece of it that a later part of the site also uses a small file of its own (a
           // store here, a link there), and the first screen then waits for a round trip for each of
           // them. Only code the page loads at once is gathered: what is fetched later (a page of
-          // its own, the review, the Rewards page's sign-in) stays out, and is fetched when it is asked for.
+          // its own, the review) stays out, and is fetched when it is asked for.
           groups: [{ name: "first", tags: ["$initial"] }],
         },
       },

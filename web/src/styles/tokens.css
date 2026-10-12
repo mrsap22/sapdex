@@ -1,6 +1,6 @@
 /* Design tokens. Components use these variables only: no raw colour or size anywhere else (a test
    enforces it). The look they describe is a printed botanical sheet: washed paper and deep blue
-   ink, gold on what is counted in ZEC and nowhere else; flat surfaces, one-pixel lines and square
+   ink, gold for the keyboard's mark and nowhere else; flat surfaces, one-pixel lines and square
    corners; an italic serif for headlines, a plain sans for the rest, a monospace for numbers. */
 
 :root {
@@ -177,11 +177,8 @@
   --tracking-wide: 0.08em;
   --diagram-width: 440px;
 
-  /* The strip of numbers beside the headline: its height on a narrow screen (two rows) and the room it keeps on a wide one, so that nothing moves as its numbers arrive. */
-  --figures-height: 185px;
-  --figures-row: 93px;
-  /* The room kept on the token's page for the sentences about the pool, before they arrive. */
-  --token-words-height: 136px;
+  /* The strip of numbers beside the headline: the height of its one row (the room above it, its rule, a label and a number), kept at every width so that nothing moves as its numbers arrive. */
+  --figures-height: 73px;
   --card-width: 480px;
   --order-width: 560px;
   /* About 64 characters of body text to a line (a "ch" is the width of a zero, which is wider than most letters). */
@@ -218,7 +215,7 @@
   /* The main action is an ink fill with paper words. */
   --accent: #141a55;
   --on-accent: #eef0f7;
-  /* Gold is for what is counted in ZEC, and for the mark that shows a keyboard user where they are. Nothing else. */
+  /* Gold is for the mark that shows a keyboard user where they are. Nothing else. */
   --gold: #825400;
   /* Green is only for what went well; brick red for what did not. */
   --good: #0b6e4f;

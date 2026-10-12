@@ -2,10 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-// The one time this site speaks to a wallet is the sign-in of the Rewards page: one plain message,
-// signed by a Solana wallet. The code that does it must never be within reach of the swap flow, or
-// of any page but the Rewards page. Other tests hold that by looking for names in files. This one
-// follows the site's own imports, file to file, so that a new file placed between the two cannot hide it.
+// This site never speaks to a wallet: no page of it asks one to be found, to connect or to sign.
+// Other tests hold that by looking for names in files. This one follows the site's own imports,
+// file to file, from every page and from the site's first file, so that nothing a page reaches,
+// however far, can be code that would.
 
 const root = path.resolve("web", "src");
 const files = (dir: string): string[] => fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => (entry.isDirectory() ? files(path.join(dir, entry.name)) : /\.tsx?$/.test(entry.name) ? [path.join(dir, entry.name)] : []));
@@ -55,78 +55,55 @@ function reach(start: string): Set<string> {
 }
 const at = (relative: string) => path.join(root, ...relative.split("/"));
 
-describe("the sign-in's wallet code is out of the swap flow's reach, by the site's own imports", () => {
-  const signIn = at("solana/sign-in.ts");
-  const steps = at("lib/sign-in-logic.ts");
+/** Whatever a file would need to find a wallet, to connect to one, or to ask one to sign or send anything. */
+const ASKS_A_WALLET = /\bsignMessage\b|wallet-standard|standard:connect|solana:sign|window\.solana|window\.ethereum|\.request\(\{|personal_sign|eth_sign|eth_requestAccounts|signTransaction|signAndSendTransaction|signAllTransactions|sendTransaction|solana:signIn|eth_sendTransaction|signTypedData/;
+const asksAWallet = (file: string) => ASKS_A_WALLET.test(fs.readFileSync(file, "utf8"));
 
+describe("no wallet code is within anything's reach, by the site's own imports", () => {
   it("reads the imports it is meant to read", () => {
     // If the pattern stopped finding imports, everything below would pass for nothing.
     expect(all.length).toBeGreaterThan(40);
     expect(importersOf(at("stores/swap.ts")).length).toBeGreaterThan(2);
-    expect(reach(at("App.tsx")).has(signIn)).toBe(true);
-    expect((graph.get(at("App.tsx")) ?? []).map(name)).toContain("pages/RewardsPage.tsx");
+    expect(reach(at("App.tsx")).has(at("pages/OrderPage.tsx"))).toBe(true);
+    expect(reach(at("App.tsx")).has(at("components/ReviewSheet.tsx"))).toBe(true);
+    expect((graph.get(at("App.tsx")) ?? []).map(name)).toContain("pages/StatsPage.tsx");
+    // From the site's first file every file of the site is reached but the type declarations nothing imports.
+    const first = reach(at("main.tsx"));
+    expect(all.filter((file) => !first.has(file)).map(name)).toEqual(["vite-env.d.ts"]);
   });
 
   it("every import of the site's own files is followed, however it is written", () => {
     expect(lost).toEqual([]);
     // With its ending, without it, and as a folder: each spelling leads to the same file.
-    const here = at("stores/rewards.ts");
-    expect(resolveImport(here, "../solana/sign-in.ts")).toBe(signIn);
-    expect(resolveImport(here, "../solana/sign-in")).toBe(signIn);
-    expect(resolveImport(here, "../solana/no-such-file")).toBeNull();
+    const here = at("stores/swap.ts");
+    const there = at("lib/swap-logic.ts");
+    expect(resolveImport(here, "../lib/swap-logic.ts")).toBe(there);
+    expect(resolveImport(here, "../lib/swap-logic")).toBe(there);
+    expect(resolveImport(here, "../lib/no-such-file")).toBeNull();
     expect(resolveImport(here, "../lib")).toBeNull();
   });
 
-  it("the code that listens for wallets is imported by the Rewards page's own store, and by nothing else; and only as it goes, when sign-in is pressed", () => {
-    expect(importersOf(signIn)).toEqual(["stores/rewards.ts"]);
-    const store = fs.readFileSync(at("stores/rewards.ts"), "utf8");
-    // Fetched when asked for, inside the sign-in, and never named at the top of the file.
-    expect(store).toMatch(/await import\("\.\.\/solana\/sign-in\.ts"\)/);
-    expect(store).not.toMatch(/^import [^\n]*solana\/sign-in/m);
-    // It is the one folder of wallet code there is, and it holds that one file.
-    expect(fs.readdirSync(at("solana"))).toEqual(["sign-in.ts"]);
-    expect(fs.existsSync(at("wallet"))).toBe(false);
+  it("there is no folder of wallet code, and no file that fetches any as it goes", () => {
+    for (const folder of ["solana", "wallet", "wallets"]) expect(fs.existsSync(at(folder)), folder).toBe(false);
+    const late = all.flatMap((file) => [...fs.readFileSync(file, "utf8").matchAll(/\bimport\(\s*["']([^"']+)["']\s*\)/g)].map((match) => `${name(file)} -> ${match[1]}`));
+    // What is fetched as it goes is pages and the review, and nothing else.
+    expect(late.length).toBeGreaterThan(4);
+    expect(late.filter((one) => !/-> \.\.?\/(?:pages|components)\/[A-Za-z]+\.tsx$/.test(one))).toEqual([]);
+    expect(late.filter((one) => /wallet|solana|sign-in/i.test(one))).toEqual([]);
   });
 
-  it("the steps of the sign-in are used by that store and by the code that listens for wallets, and by nothing else", () => {
-    expect(importersOf(steps)).toEqual(["solana/sign-in.ts", "stores/rewards.ts"]);
+  it.each(["main.tsx", "App.tsx", "pages/SwapPage.tsx", "pages/OrderPage.tsx", "pages/TrackPage.tsx", "pages/StatsPage.tsx", "pages/DocsPage.tsx", "pages/LegalPages.tsx", "components/SwapCard.tsx", "components/ReviewSheet.tsx", "components/CoinPicker.tsx", "components/Home.tsx", "components/Shell.tsx", "stores/swap.ts", "stores/ghost.ts", "stores/orders.ts", "stores/app.ts"])("nothing %s reaches, however far, asks a wallet for anything", (start) => {
+    const reached = [...reach(at(start))];
+    expect(reached.length).toBeGreaterThan(0);
+    expect(reached.filter(asksAWallet).map(name)).toEqual([]);
   });
 
-  it("that store is imported by the Rewards page, and by nothing else", () => {
-    expect(importersOf(at("stores/rewards.ts"))).toEqual(["pages/RewardsPage.tsx"]);
-  });
-
-  it("the Rewards page is imported by the app's own frame, and by nothing else", () => {
-    expect(importersOf(at("pages/RewardsPage.tsx"))).toEqual(["App.tsx"]);
-  });
-
-  it.each(["pages/SwapPage.tsx", "pages/OrderPage.tsx", "pages/TrackPage.tsx", "pages/StatsPage.tsx", "pages/DocsPage.tsx", "pages/LegalPages.tsx", "components/SwapCard.tsx", "components/ReviewSheet.tsx", "components/CoinPicker.tsx", "components/Home.tsx", "components/Shell.tsx", "stores/swap.ts", "stores/ghost.ts", "stores/orders.ts", "stores/app.ts"])("nothing %s reaches, however far, is the wallet code, the steps of the sign-in, its store or the Rewards page", (start) => {
-    const reached = reach(at(start));
-    for (const fenced of [signIn, steps, at("stores/rewards.ts"), at("pages/RewardsPage.tsx")]) expect(reached.has(fenced), `${start} reaches ${name(fenced)}`).toBe(false);
-  });
-
-  it("no other file of the site asks a wallet for anything: not to connect, not to sign", () => {
-    const askers = all.filter((file) => /\bsignMessage\b|wallet-standard|standard:connect|window\.solana|window\.ethereum|\.request\(\{|personal_sign|eth_sign|eth_requestAccounts/.test(fs.readFileSync(file, "utf8"))).map(name).sort();
-    expect(askers).toEqual(["lib/sign-in-logic.ts", "solana/sign-in.ts"]);
-  });
-
-  it("nothing anywhere in the site asks a wallet to sign or send a transaction, or names a feature that would", () => {
-    const never = /signTransaction|signAndSendTransaction|signAllTransactions|sendTransaction|solana:signIn|eth_sendTransaction|signTypedData/;
-    expect(all.filter((file) => never.test(fs.readFileSync(file, "utf8"))).map(name)).toEqual([]);
-    // The two things a wallet is asked, by the names the standard gives them, and no third.
-    const logic = fs.readFileSync(steps, "utf8");
-    expect([...new Set([...logic.matchAll(/"((?:standard|solana):[A-Za-z]+)"/g)].map((match) => match[1]))].sort()).toEqual(["solana:mainnet", "solana:signMessage", "standard:connect"]);
-  });
-
-  it("the wallet code loads no library and asks no address for anything", () => {
-    for (const file of [signIn, steps]) {
-      const text = fs.readFileSync(file, "utf8");
-      // Its only imports are the site's own files and the small base58 library the address check already uses.
-      const imports = [...text.matchAll(/\bfrom\s*"([^"]+)"/g)].map((match) => match[1]!);
-      for (const target of imports) expect(target.startsWith(".") || target === "@scure/base", `${name(file)} imports ${target}`).toBe(true);
-      expect(text, name(file)).not.toMatch(/\bfetch\(|XMLHttpRequest|WebSocket|EventSource|sendBeacon|https?:\/\//);
-      expect(text, name(file)).not.toMatch(/localStorage|sessionStorage|indexedDB|document\.cookie/);
-    }
+  it("no file of the site asks a wallet for anything: not to be found, not to connect, not to sign, not to send", () => {
+    expect(all.filter(asksAWallet).map(name)).toEqual([]);
+    // The check is one that can fail: each of the ways a page would ask is found.
+    for (const sample of ['window.dispatchEvent(new CustomEvent("wallet-standard:app-ready", { detail: api }))', 'wallet.features["standard:connect"].connect()', 'wallet.features["solana:signMessage"].signMessage({ account, message })', "await window.ethereum.request({ method })", 'provider.request({ method: "personal_sign" })', "await provider.signAndSendTransaction(tx)", "window.solana.connect()"]) expect(ASKS_A_WALLET.test(sample), sample).toBe(true);
+    // And the site's own words about wallets are not taken for it.
+    for (const plain of ["The site connects to no wallet.", "from any wallet", "isWalletChain(chain)", "A contract, not a wallet."]) expect(ASKS_A_WALLET.test(plain), plain).toBe(false);
   });
 
   it("no wallet-connect library is among the project's packages", () => {

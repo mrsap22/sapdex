@@ -1,7 +1,7 @@
 // How the site works, in plain words, as a small documentation: one page to a subject, all in
 // one layout (see DocsLayout). The figures of the example on the Fees page are read from a quote
-// taken as the page opens, the chains from the live coin list, the deadlines and the rules for
-// points from the same constants the server uses.
+// taken as the page opens, the chains from the live coin list, and the deadlines from the same
+// constants the server uses.
 //
 // Where the server routes swaps privately there is one page more, "Private routing", and the
 // other pages say what it changes for them, each in a sentence or two. Where it does not, none of
@@ -20,7 +20,6 @@ import { SLIPPAGE, type QuoteView, type TokenView } from "../../../shared/api.ts
 import { chainName, DEPOSIT_CLOSE_MS, sendWindowMs } from "../../../shared/chains.ts";
 import { GAS_DOC_SLUG, GHOST_DOC_SLUG, PRIVATE_DOC_SLUG, type DocSlug } from "../../../shared/pages.ts";
 import { INDEPENDENCE } from "../../../shared/positioning.ts";
-import { REWARDS } from "../../../shared/rewards.ts";
 import { SHIELDED_DOCS, zecShieldedOf } from "../../../shared/shielded.ts";
 import { api } from "../api.ts";
 import { Callout, DocSection, DocsLayout, TableFrame } from "../components/DocsLayout.tsx";
@@ -28,7 +27,6 @@ import { questions, type Question } from "../components/Faq.tsx";
 import { Link } from "../components/Link.tsx";
 import { DEFAULT_PAIR, EXAMPLE_AMOUNT } from "../config.ts";
 import { docHref, gasSizes, listed } from "../lib/docs-logic.ts";
-import { MIN_PAYOUT_TEXT } from "../lib/rewards-logic.ts";
 import { chainsOnList, isPrivateMode } from "../lib/site-logic.ts";
 import { statsPageOn } from "../lib/stats-logic.ts";
 import { appFeeWords, minutesText } from "../lib/swap-logic.ts";
@@ -349,8 +347,9 @@ function Safety() {
             With <AddGasLink /> there are two orders, so you make two transfers: one for the swap, and a second for the gas. Each is a plain transfer of that order's amount to that order's own deposit address.
           </p>
         ) : null}
+        <p>This site never speaks to a wallet at all. No page of it asks one to connect, to approve spending or to sign anything.</p>
         <Callout tone="warning" title="Anything else is not SaplingDex.">
-          <p>If a page in SaplingDex's name asks you to connect a wallet to pay, to approve spending, or to sign a transaction, close it.</p>
+          <p>If a page in SaplingDex's name asks you to connect a wallet, to approve spending, or to sign anything, close it.</p>
         </Callout>
       </DocSection>
       <DocSection title="Your order's link" id="link">
@@ -370,71 +369,6 @@ function Safety() {
             <li>Swaps are public on-chain. Anyone can see the transactions on the chains involved.</li>
           )}
         </ul>
-      </DocSection>
-    </DocsLayout>
-  );
-}
-
-function Rewards() {
-  const privateOn = usePrivateRouting();
-  const tokenSet = useApp((state) => (state.config?.tokenAddress ?? null) !== null);
-  return (
-    <DocsLayout href={docHref("rewards")} title="Points and weekly rewards" lead="Each delivered swap adds points to a rewards address. Each week the pool is shared out among that week's addresses by their points, in ZEC on Solana.">
-      <DocSection title="How points are counted" id="points">
-        <ul>
-          <li>
-            <strong>{REWARDS.pointsPerUsd} points for each $1 swapped:</strong> one point for every 10 cents of the swap's value in US dollars. The value is the provider's, for what you paid, as the quote showed it.
-          </li>
-          <li>
-            <strong>Only delivered swaps count.</strong> A refunded, failed or expired order, or one whose deposit was too small, adds none.
-          </li>
-          <li>
-            <strong>Every delivered swap counts the same way,</strong> whatever the coins and the chains. No fee is part of the sum.
-          </li>
-          {privateOn ? (
-            <li>
-              <strong>A privately routed swap adds points the same way.</strong> They are counted from its value in US dollars, as for any swap.
-            </li>
-          ) : null}
-        </ul>
-        <p>Points have no money value. They cannot be bought, sold or moved to another address.</p>
-      </DocSection>
-      <DocSection title="The week" id="week">
-        <p>A week runs from Monday 00:00 to Sunday 23:59, UTC time. A swap belongs to the week in which it was delivered.</p>
-      </DocSection>
-      <DocSection title="Whose points" id="address">
-        <p>Points belong to a rewards address: a Solana address. The review sheet has a field for it. It can be left empty; the swap then adds no points.</p>
-        <p>A rewards address is screened like every other address of an order.</p>
-      </DocSection>
-      <DocSection title="Seeing your points" id="signing-in">
-        <p>
-          Nobody can look up another address's points: there is no ranking and no list. On <Link href="/rewards">Rewards</Link> you see your own, after showing that the address is yours. Of everyone else's there is one figure only: how many points the week has in all, brought up to date every 15 minutes.
-        </p>
-        <p>That takes one signature of a plain message by your Solana wallet: this site's name, your address, a code used once, and the time it runs out. It is not a transaction. It moves nothing, approves nothing and costs no network fee. The sign-in lasts {REWARDS.sessionMinutes} minutes.</p>
-        <Callout tone="tip" title="Only the Rewards page speaks to a wallet.">
-          <p>It asks for that one signature and nothing else, and only when you press sign in. Paying for a swap never asks for one.</p>
-        </Callout>
-      </DocSection>
-      <DocSection title="The pool" id="pool">
-        <p>
-          The pool is what one wallet on Solana holds in ZEC, the coin rewards are paid in. <Link href="/rewards">Rewards</Link> shows that amount now, with its value in US dollars beneath and a link to the wallet on Solscan so that anyone can check it. Other coins the wallet holds are not part of the pool. Each week it is shared out by points.
-          {tokenSet ? (
-            <>
-              {" "}
-              <Link href="/token">How the coin's trades feed the pool</Link>
-            </>
-          ) : null}
-        </p>
-        <p>Signed in, you also see your share, which is your points out of the week's points, and what that share of the pool comes to in ZEC. Both are estimates: your share changes as others swap, and the pool changes until the week closes. Your own new swap counts in your share at once; other people's swaps count within 15 minutes.</p>
-      </DocSection>
-      <DocSection title="Payouts" id="payouts">
-        <p>Rewards are paid in ZEC on Solana, to your rewards address: the Solana address you sign in with on the Rewards page.</p>
-        <p>After a week has closed, its payout is shared out by points: an address's share is its points divided by all the points of that week. It is sent by hand from the pool's wallet to each rewards address. The Rewards page lists each payout with its transaction.</p>
-        <p>The addresses on a week's list are screened again as the list is made. One that is on a sanctions list is sent nothing.</p>
-        <p>The smallest payout that is sent is {MIN_PAYOUT_TEXT}. A share smaller than that is not lost: its points are carried into the next week. So are every address's points in a week for which nothing is paid.</p>
-        <Callout tone="warning" title="A payout is not owed.">
-          <p>Whether there is a payout in a given week, and how large it is, is at SaplingDex's discretion and can change or stop. Do not make a swap for the sake of a payout.</p>
-        </Callout>
       </DocSection>
     </DocsLayout>
   );
@@ -529,9 +463,6 @@ function PrivateRouting() {
       </DocSection>
       <DocSection title="What it costs" id="cost">
         <p>SaplingDex takes no fee. The only fee is the provider's 0.20%. A privately routed swap costs what any swap does, and its quote shows it before you confirm: what you pay, and what you receive after the provider's fee and the network fee.</p>
-        <p>
-          Such a swap adds <Link href={docHref("rewards")}>points</Link> as any other does: they are counted from its value in US dollars. A weekly payout is a public transfer to the rewards address, so it shows that the address has used SaplingDex. It says nothing of either end of any swap.
-        </p>
       </DocSection>
       <DocSection title="When it is not available" id="unavailable">
         <p>When a private quote cannot be had for a swap, the card says so and offers "Swap without private routing". That is an ordinary public swap: its deposit and its delivery can be matched to each other in public records.</p>
@@ -609,9 +540,6 @@ function GhostMode() {
             <strong>Its place in the totals.</strong> {statsOn ? <>The <Link href="/stats">Stats page</Link> counts it in its totals: the swaps, the volume, the chains and the coins. It has no row among the recent swaps, and its deposit transaction is never listed.</> : <>The server's running totals count it: the swaps, the volume, the chains and the coins. No row is kept for it.</>}
           </li>
           <li>
-            <strong>Its points, if you named a rewards address.</strong> They are counted before the record is deleted, and kept as any points are: a one-way fingerprint of the order's ID, the rewards address, the swap's value in US dollars, its two coins and their chains, and the time. Leave the rewards address empty and the swap adds no points, and none of this is kept.
-          </li>
-          <li>
             <strong>Lines in the logs.</strong> The server's logs name an order by a one-way fingerprint only, and are kept as for any order. For an order made in Ghost mode they carry no address and no transaction hash.
           </li>
         </ul>
@@ -643,7 +571,7 @@ function GhostMode() {
 /**
  * Add gas, in plain words: what the switch does, when it is there, the two payments, that each
  * order stands alone, where the gas goes and how it is routed, what it costs, what it adds to
- * points and to the totals, and Ghost mode. Every sentence here states what the site and its
+ * the totals, and Ghost mode. Every sentence here states what the site and its
  * server do. The sizes are read from the rule the server itself uses (shared/gas.ts).
  *
  * A page only where swaps are routed privately, as the page on private routing is: gas is only
@@ -719,10 +647,7 @@ function AddGas() {
       <DocSection title="What it costs" id="cost">
         <p>SaplingDex takes no fee on either order. The provider's fee and the receiving chain's network fee apply to the gas order as to any order, and both are shown before you confirm.</p>
       </DocSection>
-      <DocSection title="Points and totals" id="points">
-        <p>
-          A delivered gas order adds <Link href={docHref("rewards")}>points</Link> as any order does.
-        </p>
+      <DocSection title="In the totals" id="totals">
         <p>{statsOn ? <>On the <Link href="/stats">Stats page</Link> its value in US dollars is counted in the volume. It is not counted as another swap, and it has no row among the recent swaps.</> : <>The server's running totals count its value in US dollars in the volume. It is not counted as another swap, and no row is kept for it.</>}</p>
       </DocSection>
       <DocSection title="In Ghost mode" id="ghost-mode">
@@ -734,7 +659,7 @@ function AddGas() {
   );
 }
 
-const PAGES: Record<DocSlug, () => React.JSX.Element> = { fees: Fees, chains: Chains, refunds: Refunds, safety: Safety, private: PrivateRouting, "ghost-mode": GhostMode, "add-gas": AddGas, rewards: Rewards, faq: Questions };
+const PAGES: Record<DocSlug, () => React.JSX.Element> = { fees: Fees, chains: Chains, refunds: Refunds, safety: Safety, private: PrivateRouting, "ghost-mode": GhostMode, "add-gas": AddGas, faq: Questions };
 
 export default function DocsPage({ slug }: { slug: DocSlug | null }) {
   const Page = slug === null ? HowItWorks : PAGES[slug];

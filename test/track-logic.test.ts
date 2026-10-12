@@ -98,21 +98,20 @@ describe("what a miss says", () => {
 });
 
 describe("the header's pages", () => {
-  it("are Swap, Track order, Rewards, Stats and Docs, in that order, and without Stats where that page is switched off", () => {
-    expect(NAV.map((item) => `${item.label} ${item.href}`)).toEqual(["Swap /", "Track order /track", "Rewards /rewards", "Stats /stats", "Docs /docs"]);
+  it("are Swap, Track order, Stats and Docs, in that order, and without Stats where that page is switched off", () => {
+    expect(NAV.map((item) => `${item.label} ${item.href}`)).toEqual(["Swap /", "Track order /track", "Stats /stats", "Docs /docs"]);
     expect(navItems(true)).toEqual(NAV);
-    expect(navItems(false).map((item) => `${item.label} ${item.href}`)).toEqual(["Swap /", "Track order /track", "Rewards /rewards", "Docs /docs"]);
+    expect(navItems(false).map((item) => `${item.label} ${item.href}`)).toEqual(["Swap /", "Track order /track", "Docs /docs"]);
     for (const item of NAV) expect(matchRoute(item.href).page, item.href).not.toBe("not-found");
     expect(matchRoute("/track")).toEqual({ page: "track" });
     expect(matchRoute("/docs")).toEqual({ page: "docs", slug: null });
-    expect(matchRoute("/rewards")).toEqual({ page: "rewards" });
-    for (const near of ["/track/", "/docs/", "/docs/nothing", "/docs/fees/", "/docs/Fees", "/Rewards", "/track?x", "/docs.html", "/docs/ghost", "/docs/ghost-", "/docs/-mode", "/docs/ghost--mode", "/docs/ghost-mode/", "/docs/Ghost-mode", "/docs/ghost_mode"]) expect(matchRoute(near).page, near).toBe("not-found");
+    for (const near of ["/track/", "/docs/", "/docs/nothing", "/docs/fees/", "/docs/Fees", "/rewards", "/Track", "/track?x", "/docs.html", "/docs/ghost", "/docs/ghost-", "/docs/-mode", "/docs/ghost--mode", "/docs/ghost-mode/", "/docs/Ghost-mode", "/docs/ghost_mode"]) expect(matchRoute(near).page, near).toBe("not-found");
   });
 
   it("the documentation is one page to a subject, each at its own address, all under Docs", () => {
     // (Two of them, the page on private routing and the page on Add gas, are pages only where swaps are routed privately. The next test holds that.)
     // The page on Ghost mode is a page everywhere: its address is two words joined by a hyphen, and the router reads it as one page.
-    expect([...DOC_SLUGS]).toEqual(["fees", "chains", "refunds", "safety", "private", "ghost-mode", "add-gas", "rewards", "faq"]);
+    expect([...DOC_SLUGS]).toEqual(["fees", "chains", "refunds", "safety", "private", "ghost-mode", "add-gas", "faq"]);
     expect(GHOST_DOC_SLUG).toBe("ghost-mode");
     expect(matchRoute("/docs/ghost-mode")).toEqual({ page: "docs", slug: "ghost-mode" });
     for (const slug of DOC_SLUGS) {
@@ -120,13 +119,13 @@ describe("the header's pages", () => {
       expect(navFor(`/docs/${slug}`)).toBe("/docs");
     }
     // Where swaps are routed in public, the contents are every page but those two, and the Terms and the Privacy Policy after them; nothing else.
-    expect(DOC_PAGES.map((page) => page.href)).toEqual(["/docs", "/docs/fees", "/docs/chains", "/docs/refunds", "/docs/safety", "/docs/ghost-mode", "/docs/rewards", "/docs/faq", "/terms", "/privacy"]);
+    expect(DOC_PAGES.map((page) => page.href)).toEqual(["/docs", "/docs/fees", "/docs/chains", "/docs/refunds", "/docs/safety", "/docs/ghost-mode", "/docs/faq", "/terms", "/privacy"]);
     expect(DOC_PAGES.find((page) => page.href === "/docs/ghost-mode")).toEqual({ href: "/docs/ghost-mode", title: "Ghost mode", group: "Guide" });
     expect(DOC_PAGES.map((page) => page.href)).toEqual(["/docs", ...docSlugs(false).map((slug) => `/docs/${slug}`), "/terms", "/privacy"]);
     for (const page of DOC_PAGES) expect(matchRoute(page.href).page, page.href).not.toBe("not-found");
     // Previous and next follow the contents, and stop at either end.
     expect(neighbours("/docs")).toMatchObject({ previous: null, next: { href: "/docs/fees" } });
-    expect(neighbours("/docs/faq")).toMatchObject({ previous: { href: "/docs/rewards" }, next: { href: "/terms" } });
+    expect(neighbours("/docs/faq")).toMatchObject({ previous: { href: "/docs/ghost-mode" }, next: { href: "/terms" } });
     expect(neighbours("/privacy")).toMatchObject({ previous: { href: "/terms" }, next: null });
     expect(neighbours("/nowhere")).toEqual({ previous: null, next: null });
   });
@@ -138,12 +137,12 @@ describe("the header's pages", () => {
     expect(docHref(PRIVATE_DOC_SLUG)).toBe(PRIVATE_DOC.href);
 
     // Routed in public: its address is not among the documentation's, it is not in the contents, and no page leads to it.
-    expect([...docSlugs(false)]).toEqual(["fees", "chains", "refunds", "safety", "ghost-mode", "rewards", "faq"]);
+    expect([...docSlugs(false)]).toEqual(["fees", "chains", "refunds", "safety", "ghost-mode", "faq"]);
     expect(docPages(false)).toBe(DOC_PAGES);
     expect(DOC_PAGES.some((page) => page.href === PRIVATE_DOC.href || /private/i.test(page.title))).toBe(false);
     expect(neighbours("/docs/safety", docPages(false))).toMatchObject({ previous: { href: "/docs/refunds" }, next: { href: "/docs/ghost-mode" } });
-    expect(neighbours("/docs/ghost-mode", docPages(false))).toMatchObject({ previous: { href: "/docs/safety" }, next: { href: "/docs/rewards" } });
-    expect(neighbours("/docs/rewards", docPages(false))).toMatchObject({ previous: { href: "/docs/ghost-mode" }, next: { href: "/docs/faq" } });
+    expect(neighbours("/docs/ghost-mode", docPages(false))).toMatchObject({ previous: { href: "/docs/safety" }, next: { href: "/docs/faq" } });
+    expect(neighbours("/docs/faq", docPages(false))).toMatchObject({ previous: { href: "/docs/ghost-mode" }, next: { href: "/terms" } });
     expect(neighbours(PRIVATE_DOC.href, docPages(false))).toEqual({ previous: null, next: null });
     expect(docExists(PRIVATE_DOC_SLUG, false)).toBe(false);
     // Whatever asks without saying how swaps are routed is given the public answer, so the page cannot be listed by oversight.
@@ -153,13 +152,13 @@ describe("the header's pages", () => {
     // Routed privately: it follows "Staying safe", in the contents and in previous and next, and everything else keeps its place.
     // (The page on Add gas, the other page that exists only there, follows "Ghost mode"; test/gas-words.test.ts holds it.)
     expect([...docSlugs(true)]).toEqual([...DOC_SLUGS]);
-    expect(docPages(true).map((page) => page.href)).toEqual(["/docs", "/docs/fees", "/docs/chains", "/docs/refunds", "/docs/safety", "/docs/private", "/docs/ghost-mode", "/docs/add-gas", "/docs/rewards", "/docs/faq", "/terms", "/privacy"]);
+    expect(docPages(true).map((page) => page.href)).toEqual(["/docs", "/docs/fees", "/docs/chains", "/docs/refunds", "/docs/safety", "/docs/private", "/docs/ghost-mode", "/docs/add-gas", "/docs/faq", "/terms", "/privacy"]);
     expect(docPages(true).map((page) => page.href)).toEqual(["/docs", ...docSlugs(true).map((slug) => `/docs/${slug}`), "/terms", "/privacy"]);
     expect(docPages(true).filter((page) => page.href !== PRIVATE_DOC.href && page.href !== GAS_DOC.href)).toEqual([...DOC_PAGES]);
     expect(neighbours("/docs/safety", docPages(true))).toMatchObject({ previous: { href: "/docs/refunds" }, next: { href: "/docs/private" } });
     expect(neighbours("/docs/private", docPages(true))).toMatchObject({ previous: { href: "/docs/safety" }, next: { href: "/docs/ghost-mode" } });
     expect(neighbours("/docs/ghost-mode", docPages(true))).toMatchObject({ previous: { href: "/docs/private" }, next: { href: "/docs/add-gas" } });
-    expect(neighbours("/docs/rewards", docPages(true))).toMatchObject({ previous: { href: "/docs/add-gas" }, next: { href: "/docs/faq" } });
+    expect(neighbours("/docs/faq", docPages(true))).toMatchObject({ previous: { href: "/docs/add-gas" }, next: { href: "/terms" } });
     expect(docExists(PRIVATE_DOC_SLUG, true)).toBe(true);
 
     // Every other page exists either way.
@@ -182,7 +181,7 @@ describe("the header's pages", () => {
   it("gives each heading an address of its own, and knows which one is being read", () => {
     expect(headingId("3. How a swap works")).toBe("how-a-swap-works");
     expect(headingId("What may be lost")).toBe("what-may-be-lost");
-    expect(headingId("11. Points and weekly rewards")).toBe("points-and-weekly-rewards");
+    expect(headingId("11. Governing law")).toBe("governing-law");
     expect(headingId("???")).toBe("section");
     // The last heading to have passed the line under the header; the first until any has; the last at the very end of the page.
     expect(headingInView([300, 900, 1500], 120, false)).toBe(0);
@@ -197,9 +196,8 @@ describe("the header's pages", () => {
     expect(navFor("/track")).toBe("/track");
     expect(navFor(`/order/${"A".repeat(27)}`)).toBe("/track");
     expect(navFor("/docs")).toBe("/docs");
-    expect(navFor("/rewards")).toBe("/rewards");
     expect(navFor("/stats")).toBe("/stats");
-    for (const outside of ["/terms", "/privacy", "/nowhere", "/states"]) expect(navFor(outside), outside).toBeNull();
+    for (const outside of ["/terms", "/privacy", "/nowhere", "/rewards", "/states"]) expect(navFor(outside), outside).toBeNull();
   });
 });
 
@@ -297,8 +295,8 @@ describe("what the wider pages state as fact", () => {
   });
 
   it("lists what the site does, each a working feature, with the coin among them only once its address is set", () => {
-    expect(features(false).map((item) => item.title)).toEqual(["Swaps in and out of ZEC", "Order tracking and automatic refunds", "Points and weekly rewards", "Ghost mode"]);
-    expect(features(true).map((item) => item.title)).toEqual(["Swaps in and out of ZEC", "Order tracking and automatic refunds", "Points and weekly rewards", "Ghost mode", "The $SAPDEX coin"]);
+    expect(features(false).map((item) => item.title)).toEqual(["Swaps in and out of ZEC", "Order tracking and automatic refunds", "Ghost mode"]);
+    expect(features(true).map((item) => item.title)).toEqual(["Swaps in and out of ZEC", "Order tracking and automatic refunds", "Ghost mode", "The $SAPDEX coin"]);
     for (const tokenSet of [false, true]) {
       for (const privateRouting of [false, true]) {
         for (const item of features(tokenSet, privateRouting)) {
@@ -310,10 +308,8 @@ describe("what the wider pages state as fact", () => {
         }
       }
     }
-    // What is said of payouts says that they are not owed.
-    for (const privateRouting of [false, true]) expect(features(false, privateRouting).find((item) => item.key === "rewards")?.text).toMatch(/at SaplingDex's discretion and can change/);
-    // What is said of the coin: where its facts are shown, and how its trades feed the weekly pool. It leads to the coin's own page.
-    expect(features(true).at(-1)).toEqual({ key: "token", title: "The $SAPDEX coin", text: "The coin's address, its chain, what it trades against and where it was planted are shown on this site, with how its trades feed the weekly pool.", link: { href: "/token", label: "The coin's facts" } });
+    // What is said of the coin: where its facts are shown. It leads to the coin's own page.
+    expect(features(true).at(-1)).toEqual({ key: "token", title: "The $SAPDEX coin", text: "The coin's address, its chain, what it trades against and where it was planted are shown on this site.", link: { href: "/token", label: "The coin's facts" } });
     expect(features(false).some((item) => item.key === "token")).toBe(false);
   });
 
@@ -322,17 +318,16 @@ describe("what the wider pages state as fact", () => {
     const today = [
       { key: "swaps", title: "Swaps in and out of ZEC", text: "Pay with any coin on any chain and arrive on Solana with ZEC, the coin every Sapling coin trades in; or take ZEC out to any coin. Quotes, orders and delivery are powered by NEAR Intents, and every fee is shown before you confirm.", link: { href: "/docs", label: "How a swap works" } },
       { key: "tracking", title: "Order tracking and automatic refunds", text: "Every order has its own page, which follows the deposit, the swap and the delivery. If a swap fails, the provider sends your coins back to your refund address.", link: { href: "/track", label: "Track an order" } },
-      { key: "rewards", title: "Points and weekly rewards", text: "Each delivered swap adds points to the Solana address named for it: 10 for each $1 swapped. Each week the pool is shared out by points, in ZEC. Payouts are at SaplingDex's discretion and can change.", link: { href: "/rewards", label: "See your points" } },
       // Ghost mode: what it does, in one sentence, and then the first thing it does not.
       { key: "ghost", title: "Ghost mode", text: "One switch in the header. While it is on, the site keeps nothing in your browser but the switch itself, and deletes your order's record once it is delivered or refunded. Your deposit and your delivery are still public on-chain.", link: { href: "/docs/ghost-mode", label: "How Ghost mode works" } },
     ];
     expect(features(false)).toEqual(today);
     expect(features(false, false)).toEqual(today);
-    expect(features(true, false).slice(0, 4)).toEqual(today);
+    expect(features(true, false).slice(0, 3)).toEqual(today);
     for (const tokenSet of [false, true]) expect(JSON.stringify(features(tokenSet, false))).not.toMatch(/privat|confidential|\/docs\/private/i);
 
     // Routed privately: item 01 says what it is, in the provider's own terms and no stronger, and leads to the page that explains it.
-    const [swaps, tracking, rewards, ghost, gas, token] = features(true, true);
+    const [swaps, tracking, ghost, gas, token] = features(true, true);
     expect(swaps).toEqual({
       key: "swaps",
       title: "Private swaps, in and out of ZEC",
@@ -340,17 +335,13 @@ describe("what the wider pages state as fact", () => {
       link: { href: "/docs/private", label: "How private routing works" },
     });
     // Add gas, which is offered only beside a privately routed swap, is on the list only here, after Ghost mode (test/gas-words.test.ts holds its words).
-    expect(features(false, true).map((item) => item.title)).toEqual(["Private swaps, in and out of ZEC", "Order tracking and automatic refunds", "Points and weekly rewards", "Ghost mode", "Add gas"]);
-    expect(features(true, true).map((item) => item.key)).toEqual(["swaps", "tracking", "rewards", "ghost", "gas", "token"]);
+    expect(features(false, true).map((item) => item.title)).toEqual(["Private swaps, in and out of ZEC", "Order tracking and automatic refunds", "Ghost mode", "Add gas"]);
+    expect(features(true, true).map((item) => item.key)).toEqual(["swaps", "tracking", "ghost", "gas", "token"]);
     expect(gas?.title).toBe("Add gas");
     // Tracking, Ghost mode and the coin are the same either way.
     expect(tracking).toEqual(today[1]);
-    expect(ghost).toEqual(today[3]);
-    expect(token).toEqual(features(true, false)[4]);
-    // A privately routed swap adds points as any other does, so what is said of points is the same either way.
-    expect(rewards).toEqual(today[2]);
-    expect(rewards?.text).toBe("Each delivered swap adds points to the Solana address named for it: 10 for each $1 swapped. Each week the pool is shared out by points, in ZEC. Payouts are at SaplingDex's discretion and can change.");
-    for (const item of features(true, true)) expect(item.text, item.key).not.toMatch(/adds none|no fee|no points/i);
+    expect(ghost).toEqual(today[2]);
+    expect(token).toEqual(features(true, false)[3]);
   });
 
   it("says what private means in three rows, and claims no more than the provider does", () => {
@@ -422,7 +413,7 @@ describe("what the wider pages state as fact", () => {
     // it is shown only where swaps are routed privately, is held by test/wording.test.ts. One page of the documentation explains
     // how private routing differs from a mixer: in that section's title and in the sentence that says it is not one, and nowhere else,
     // the word stands.
-    const pages = ["web/src/components/Home.tsx", "web/src/components/MenuSheet.tsx", "web/src/components/Faq.tsx", "web/src/pages/DocsPage.tsx", "web/src/pages/TrackPage.tsx", "web/src/pages/RewardsPage.tsx", "web/src/lib/site-logic.ts", "web/src/lib/track-logic.ts"];
+    const pages = ["web/src/components/Home.tsx", "web/src/components/MenuSheet.tsx", "web/src/components/Faq.tsx", "web/src/pages/DocsPage.tsx", "web/src/pages/TrackPage.tsx", "web/src/lib/site-logic.ts", "web/src/lib/track-logic.ts"];
     const banned = /\b(anonymous|untraceable|dark|mixer|guaranteed?|earn|yield|apr|partner(ship)?)\b/i;
     const NOT_A_MIXER = /How it differs from a mixer(?:" id="mixer")?|Private routing is not a mixer\./g;
     const read = (file: string, line: string) => (file === "web/src/pages/DocsPage.tsx" ? line.replace(NOT_A_MIXER, "") : line);

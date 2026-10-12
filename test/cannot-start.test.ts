@@ -36,8 +36,8 @@ describe("a setting that stops the start", () => {
   it("names the setting and never carries its value, whatever the value is", () => {
     const wrong: [string, string][] = [
       ["ONECLICK_API_KEY", "not-a-key-but-a-secret-all-the-same"],
-      ["SOLANA_RPC_URL", "http://node.example.org/a-secret-path"],
-      ["RESERVE_ADDRESS", "0x52908400098527886E0F7030069857D2E4169EE7"],
+      ["BASE_RPC_URL", "http://node.example.org/a-secret-path"],
+      ["TOKEN_ADDRESS", "0x52908400098527886E0F7030069857D2E4169EE7"],
       ["SITE_URL", "https://example.org/some/path?with=things"],
       ["SUPPORT_CONTACT", "somebody who is not an address"],
       ["ZEC_SHIELDED", "certainly"],

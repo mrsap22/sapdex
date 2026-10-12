@@ -6,7 +6,7 @@
 // Someone moving about with Tab or the arrow keys sees one quiet line round where they are: 1 px,
 // a neutral tone, 2 px off. Any press of a pointer takes it away again.
 //
-// What the walk proves, on the swap page, Track order, the Docs, the Rewards page, the Terms and
+// What the walk proves, on the swap page, Track order, the Docs, the Terms and
 // the page of component states, in both themes:
 //   - given the focus without the keyboard, no control on the page shows an outline of any colour,
 //     nor a ring, border or glow in the accent colour;
@@ -103,7 +103,7 @@ export async function focusWalk(browser: Browser, options: { baseUrl: string; ou
     };
     try {
       // ---- Every page: given the focus without the keyboard, nothing is outlined and nothing turns green ----
-      for (const address of ["/", "/?amount=25", "/track", "/docs", "/docs/fees", "/rewards", "/terms", "/states"]) {
+      for (const address of ["/", "/?amount=25", "/track", "/docs", "/docs/fees", "/terms", "/states"]) {
         await visit(page, new URL(address, baseUrl).toString());
         await page.waitForTimeout(900);
         const swept = (await page.evaluate(SWEEP)) as { looked: number; found: string[] };

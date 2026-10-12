@@ -25,11 +25,10 @@ import type { Browser, Page } from "playwright-core";
 import { axeProblems } from "./axe.ts";
 import { POSITIONING } from "../shared/positioning.ts";
 import { freshSol, headerFits, orderPace, seeAll, settle } from "./order-walk.ts";
-import { walletCodeAmong } from "./solana-wallet.ts";
 
 const SOL = "DZrFMBPK8J5Jf6KYNDrj4mo2QYAGgQaxsxyyCwQtAWjP";
 const EVM = "0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB";
-const NAMES = ["Swap", "Track order", "Rewards", "Stats", "Docs"];
+const NAMES = ["Swap", "Track order", "Stats", "Docs"];
 
 export interface WalkResult {
   complaints: string[];
@@ -188,11 +187,11 @@ export async function siteWalk(browser: Browser, options: { baseUrl: string; pra
     }).length);
     expectThat(boxed === 0, `${boxed} of the facts, statements and questions have a border on all four sides`);
 
-    // What SaplingDex does: one stage, four things (five once the token has an address), one on show at a time.
+    // What SaplingDex does: one stage, three things (four once the token has an address), one on show at a time.
     const stage = desk.locator(".stage");
     await stage.scrollIntoViewIfNeeded();
     const tabs = stage.getByRole("tab");
-    expectThat(JSON.stringify(await stage.locator(".stage-tab-title").allInnerTexts()) === JSON.stringify(["Swaps in and out of ZEC", "Order tracking and automatic refunds", "Points and weekly rewards", "Ghost mode"]), `the stage's items are ${JSON.stringify(await stage.locator(".stage-tab-title").allInnerTexts())}`);
+    expectThat(JSON.stringify(await stage.locator(".stage-tab-title").allInnerTexts()) === JSON.stringify(["Swaps in and out of ZEC", "Order tracking and automatic refunds", "Ghost mode"]), `the stage's items are ${JSON.stringify(await stage.locator(".stage-tab-title").allInnerTexts())}`);
     expectThat((await stage.getByText(/^(Live|Planned|Paused|Soon)$/).count()) === 0, "an item of the stage carries a tag");
     const onShow = async () => (await stage.locator('.stage-panel[data-active] .stage-title').innerText()).trim();
     const selected = async () => tabs.evaluateAll((all) => all.findIndex((tab) => tab.getAttribute("aria-selected") === "true"));
@@ -207,16 +206,16 @@ export async function siteWalk(browser: Browser, options: { baseUrl: string; pra
     // The arrows, and from then on it stays where it is put.
     await stage.getByRole("button", { name: "Next" }).click();
     await desk.waitForTimeout(800);
-    expectThat((await onShow()) === "Points and weekly rewards" && (await selected()) === 2, `after Next the stage shows "${await onShow()}"`);
+    expectThat((await onShow()) === "Ghost mode" && (await selected()) === 2, `after Next the stage shows "${await onShow()}"`);
     await desk.mouse.move(0, 0);
     await desk.waitForTimeout(7500);
-    expectThat((await onShow()) === "Points and weekly rewards", "the stage went on moving by itself after it was taken in hand");
+    expectThat((await onShow()) === "Ghost mode", "the stage went on moving by itself after it was taken in hand");
     await stage.getByRole("button", { name: "Previous" }).click();
     await desk.waitForTimeout(800);
     expectThat((await onShow()) === "Order tracking and automatic refunds", `after Previous the stage shows "${await onShow()}"`);
-    // The arrow keys, on its row of items: right, right, right (round to the first), left (round to the last), Home.
+    // The arrow keys, on its row of items: right, right (round to the first), left (round to the last), Home.
     await tabs.nth(1).focus();
-    for (const [key, title] of [["ArrowRight", "Points and weekly rewards"], ["ArrowRight", "Ghost mode"], ["ArrowRight", "Swaps in and out of ZEC"], ["ArrowLeft", "Ghost mode"], ["Home", "Swaps in and out of ZEC"]] as const) {
+    for (const [key, title] of [["ArrowRight", "Ghost mode"], ["ArrowRight", "Swaps in and out of ZEC"], ["ArrowLeft", "Ghost mode"], ["Home", "Swaps in and out of ZEC"]] as const) {
       await desk.keyboard.press(key);
       await desk.waitForTimeout(700);
       expectThat((await onShow()) === title, `after ${key} the stage shows "${await onShow()}", not "${title}"`);
@@ -235,10 +234,8 @@ export async function siteWalk(browser: Browser, options: { baseUrl: string; pra
     expectThat((await diagram.locator(".diagram-part").evaluateAll((parts) => parts.every((part) => getComputedStyle(part).opacity === "1"))) === true, "a part of the drawing is still faint after its step was reached");
     await desk.evaluate(() => window.scrollTo(0, 0));
 
-    // No page brings the code that speaks to a wallet with it, or touches another site. (That code is fetched in
-    // one place only: on the Rewards page, when "Sign in" is pressed.) Judged by what the fetched scripts contain,
-    // not by what they are called.
-    for (const address of ["/", "/track", "/docs", "/rewards", "/stats"]) {
+    // No page touches another site.
+    for (const address of ["/", "/track", "/docs", "/stats"]) {
       const fresh = await wide.newPage();
       const scripts: string[] = [];
       const strangers: string[] = [];
@@ -251,12 +248,10 @@ export async function siteWalk(browser: Browser, options: { baseUrl: string; pra
       await fresh.waitForTimeout(1500);
       expectThat(strangers.length === 0, `${address} contacted ${[...new Set(strangers)].join(", ")}`);
       expectThat(scripts.length > 0, `${address} fetched no scripts at all, so nothing was checked`);
-      const walletCode = await walletCodeAmong(scripts);
-      expectThat(walletCode.length === 0, `${address} fetched wallet code with nothing pressed (${walletCode.join(", ")})`);
       // From 768 px up the Help button floats on every page, clear of whatever the page is about.
       const help = await boxOf(fresh, ".help");
       expectThat(help !== null && (await helpShownOrCovering(fresh)), `on ${address} there is no Help button on a wide screen, and nothing to press where it would be`);
-      for (const part of [".card", ".focus-stage", ".rewards-week", ".docs-body", ".button-primary"]) if ((await fresh.locator(part).count()) > 0) expectThat(!overlaps(help, await boxOf(fresh, part)), `on ${address} the Help button lies over ${part}`);
+      for (const part of [".card", ".focus-stage", ".docs-body", ".button-primary"]) if ((await fresh.locator(part).count()) > 0) expectThat(!overlaps(help, await boxOf(fresh, part)), `on ${address} the Help button lies over ${part}`);
       await fresh.close();
     }
 
@@ -277,7 +272,7 @@ export async function siteWalk(browser: Browser, options: { baseUrl: string; pra
     const [contentsBox, docsBody, hereBox] = [await contents.boundingBox(), await boxOf(desk, ".docs-body"), await here.boundingBox()];
     expectThat(contentsBox !== null && docsBody !== null && hereBox !== null && contentsBox.x + contentsBox.width <= docsBody.x && docsBody.x + docsBody.width <= hereBox.x, "on a wide screen the docs are not laid out as contents, text, this page's headings");
     expectThat(docsBody !== null && docsBody.width <= 600, `the docs' reading column is ${Math.round(docsBody?.width ?? 0)} px wide: too long a line to read`);
-    expectThat(JSON.stringify(await contents.locator(".docs-page-link").allInnerTexts()) === JSON.stringify(["How it works", "Fees", "Supported chains", "Refunds and deadlines", "Staying safe", "Ghost mode", "Points and weekly rewards", "Questions", "Terms of Use", "Privacy Policy"]), `the docs' contents are ${JSON.stringify(await contents.locator(".docs-page-link").allInnerTexts())}`);
+    expectThat(JSON.stringify(await contents.locator(".docs-page-link").allInnerTexts()) === JSON.stringify(["How it works", "Fees", "Supported chains", "Refunds and deadlines", "Staying safe", "Ghost mode", "Questions", "Terms of Use", "Privacy Policy"]), `the docs' contents are ${JSON.stringify(await contents.locator(".docs-page-link").allInnerTexts())}`);
     expectThat((await contents.locator('.docs-page-link[aria-current="page"]').innerText()) === "How it works", "the docs' contents do not mark the page being read");
     // Next, at the foot of the page, leads to the next page; Previous leads back.
     await desk.getByRole("navigation", { name: "More pages" }).getByRole("link", { name: /Next/ }).click();
@@ -309,23 +304,7 @@ export async function siteWalk(browser: Browser, options: { baseUrl: string; pra
     // The Terms and the Privacy Policy are in the same layout, at the end of the same contents.
     await contents.getByRole("link", { name: "Terms of Use" }).click();
     await desk.getByRole("heading", { name: "Terms of Use", level: 1 }).waitFor({ timeout: 15_000 });
-    expectThat((await here.getByRole("link").count()) === 13 && (await desk.getByText(/draft/i).count()) === 0, `the Terms show ${await here.getByRole("link").count()} sections under "On this page", or still call themselves a draft`);
-    await desk.goto(new URL("/", baseUrl).toString(), { waitUntil: "networkidle" });
-    await desk.locator(".card").waitFor({ timeout: 15_000 });
-    await nav.getByRole("link", { name: "Rewards" }).click();
-    await desk.getByRole("heading", { name: "Points and weekly rewards", level: 1 }).waitFor({ timeout: 15_000 });
-    expectThat((await current()) === "Rewards", `on Rewards the marked link is "${await current()}"`);
-    // Before anyone has signed in: the week and its countdown, the rules, a way to sign in; nobody's points, and no address.
-    await desk.locator(".rewards-count").waitFor({ timeout: 15_000 });
-    const clock = (await desk.locator(".rewards-count").innerText()).trim();
-    expectThat(/^\d+d \d{2}:\d{2}:\d{2}$/.test(clock), `the week's countdown reads "${clock}"`);
-    await desk.waitForTimeout(1200);
-    expectThat((await desk.locator(".rewards-count").innerText()).trim() !== clock, "the week's countdown does not count");
-    expectThat(await desk.getByRole("button", { name: "Sign in with a Solana wallet", exact: true }).isVisible(), "the Rewards page does not offer to sign in");
-    expectThat((await desk.locator(".rewards-rules li").count()) === 4, `the Rewards page gives ${await desk.locator(".rewards-rules li").count()} rules in short`);
-    const rewards = await desk.locator("main#main").innerText();
-    expectThat(!/0x[0-9a-fA-F]{6}/.test(rewards) && !rewards.split(/\s+/).some((word) => /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(word) && /\d/.test(word)) && (await desk.locator(".rewards-points").count()) === 0, "the Rewards page shows an address or a number of points to someone who has not signed in");
-    expectThat((await desk.getByRole("heading", { name: "Current pool" }).count()) === 0, "the Rewards page shows a pool although no pool wallet is set");
+    expectThat((await here.getByRole("link").count()) === 12 && (await desk.getByText(/draft/i).count()) === 0, `the Terms show ${await here.getByRole("link").count()} sections under "On this page", or still call themselves a draft`);
     await desk.goto(new URL("/", baseUrl).toString(), { waitUntil: "networkidle" });
     await desk.locator(".card").waitFor({ timeout: 15_000 });
 

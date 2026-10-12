@@ -19,7 +19,6 @@ import { displayBps, displayExact } from "../../../shared/amounts.ts";
 import type { GasLine, OrderView, TxRef } from "../../../shared/api.ts";
 import { chainName } from "../../../shared/chains.ts";
 import { POSITIONING } from "../../../shared/positioning.ts";
-import { REWARDS } from "../../../shared/rewards.ts";
 import { api, ApiError } from "../api.ts";
 import { Address } from "../components/Address.tsx";
 import { Amount } from "../components/Amount.tsx";
@@ -237,7 +236,6 @@ function HashField({ order, onOrder, part }: { order: OrderView; onOrder(order: 
 function Summary({ order, privacyMode, gas = false, beside = false }: { order: OrderView; privacyMode: PrivacyMode; gas?: boolean; beside?: boolean }) {
   const from = order.from;
   const to = order.to;
-  const which = gas ? "This gas order" : "This swap";
   // How the order was routed, as it was made. A private order always says so; a public one only where the server routes privately.
   const routing = routingNote(privacyMode, order);
   const noFee = appFeeWords(order);
@@ -323,22 +321,6 @@ function Summary({ order, privacyMode, gas = false, beside = false }: { order: O
         <p className="review-address-value">
           <Address value={order.refundTo} />
         </p>
-      </div>
-      <div className="review-address">
-        <p className="review-address-label">
-          Points<span className="muted"> · {chainName(REWARDS.chain)}</span>
-        </p>
-        {/* Whether an order adds points turns on its rewards address alone, never on a fee. */}
-        {order.rewardsAddress !== null ? (
-          <>
-            <p className="review-address-value">
-              <Address value={order.rewardsAddress} />
-            </p>
-            <p className="review-address-note muted">{which}'s points go to this address when it is delivered.</p>
-          </>
-        ) : (
-          <p className="review-address-note muted">{which} adds no points: it was made without a rewards address.</p>
-        )}
       </div>
       {beside ? (
         <p className="order-foot muted">

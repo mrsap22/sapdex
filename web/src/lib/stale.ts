@@ -1,5 +1,5 @@
 // A page left open while a new version of the site goes out still asks for parts of the old one
-// (a page, the wallet's code, the sign-in), and those files are gone. When a part fails to load,
+// (a page, the review), and those files are gone. When a part fails to load,
 // the page is loaded again, once, which brings the new version. If a part fails again straight
 // after that, nothing is reloaded a second time: the page says the site was updated and offers a
 // button, so a part that truly cannot be had never turns into an endless reload.

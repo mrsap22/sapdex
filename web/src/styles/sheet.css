@@ -276,10 +276,6 @@
   background: var(--raised);
 }
 
-.review-address .address-field {
-  margin-top: 0;
-}
-
 /* A text button standing alone on its line starts where the text above it starts: its own side room is taken back. */
 .review-address-note > .button-text:only-child {
   margin-left: calc(var(--space-12) * -1);

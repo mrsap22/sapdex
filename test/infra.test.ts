@@ -18,7 +18,7 @@ import { configuredLimits, PREVIEW_SHARE, RateLimiter } from "../server/ratelimi
 import { createRpc, decodeErc20Transfer, decodeTransferLog, parseProxyBody, TRANSFER_TOPIC } from "../server/rpc.ts";
 import { createSessionIssuer, SESSION_TTL_MS } from "../server/session.ts";
 import { boot } from "../server/boot.ts";
-import { firstWords, inlineScriptHashes, loadStaticSite, privateRoutingEdits, withBanner, withCanonical, withPrivateRouting, withRewardsWallet, withSiteUrl } from "../server/static.ts";
+import { firstWords, inlineScriptHashes, loadStaticSite, privateRoutingEdits, withBanner, withCanonical, withPrivateRouting, withSiteUrl } from "../server/static.ts";
 import { BANNER_WORDS } from "../shared/banner.ts";
 import { POSITIONING } from "../shared/positioning.ts";
 import { EXPLORER_HOSTS, explorerTxUrl } from "../shared/chains.ts";
@@ -334,7 +334,7 @@ describe("RPC helpers", () => {
   it("never follows a redirect and hides upstream failures", async () => {
     let init: RequestInit | undefined;
     const rpc = createRpc({
-      urls: { bsc: "https://rpc.example/secret", eth: "https://rpc.example/secret", base: "https://rpc.example/secret", arb: "https://rpc.example/secret", sol: "https://rpc.example/secret" },
+      urls: { bsc: "https://rpc.example/secret", eth: "https://rpc.example/secret", base: "https://rpc.example/secret", arb: "https://rpc.example/secret" },
       fetchImpl: async (_url, options) => {
         init = options;
         return new Response(JSON.stringify([{ jsonrpc: "2.0", id: 1, error: { code: 3, message: "execution reverted: nope\u0000<b>", data: "0xdead" } }, { jsonrpc: "2.0", id: 0, result: "0x1" }]));
@@ -345,7 +345,7 @@ describe("RPC helpers", () => {
     expect(results[0]).toEqual({ ok: true, result: "0x1" });
     // The node's own words are dropped; only the code and the revert data pass.
     expect(results[1]).toEqual({ ok: false, code: 3, message: "execution reverted", data: "0xdead" });
-    const down = createRpc({ urls: { bsc: "https://x", eth: "https://x", base: "https://x", arb: "https://x", sol: "https://x" }, fetchImpl: async () => { throw new Error("connect ECONNREFUSED https://rpc.example/secret"); } });
+    const down = createRpc({ urls: { bsc: "https://x", eth: "https://x", base: "https://x", arb: "https://x" }, fetchImpl: async () => { throw new Error("connect ECONNREFUSED https://rpc.example/secret"); } });
     expect(await down.call("eth", "eth_chainId", [])).toEqual({ ok: false, code: -32603, message: "RPC unavailable" });
   });
 });
@@ -832,12 +832,14 @@ describe("site serving", () => {
   });
 
   it("serves the app shell for its own routes", async () => {
-    for (const route of ["/", "/track", "/docs", "/docs/fees", "/docs/chains", "/docs/refunds", "/docs/safety", "/docs/ghost-mode", "/docs/rewards", "/docs/faq", "/rewards", "/terms", "/privacy", `/order/${"A".repeat(27)}`]) {
+    for (const route of ["/", "/track", "/docs", "/docs/fees", "/docs/chains", "/docs/refunds", "/docs/safety", "/docs/ghost-mode", "/docs/faq", "/terms", "/privacy", `/order/${"A".repeat(27)}`]) {
       const res = await fetch(url + route);
       expect(res.status, route).toBe(200);
       expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
       expect(await res.text()).toContain('<div id="root">');
     }
+    // An address that is none of them is no page: not one that only looks like a page of the site.
+    for (const route of ["/rewards", "/docs/rewards", "/wallet", "/docs/nothing"]) expect((await fetch(url + route)).status, route).toBe(404);
   });
 
   it("serves the page of component states only when told test pages exist", async () => {
@@ -904,16 +906,6 @@ describe("site serving", () => {
     // The inline script's hash, which the security policy carries, is the same either way.
     expect(withAddress.scriptHashes).toEqual(without.scriptHashes);
     expect(withAddress.scriptHashes).toHaveLength(1);
-    // A server with a rewards wallet writes its address into the page, so the Rewards page draws the pool's frame at once; one without writes nothing.
-    const wallet = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB";
-    const withWallet = loadStaticSite(dir, { rewardsWallet: wallet })!;
-    expect(await served(withWallet)).toBe(withRewardsWallet(page, wallet));
-    expect(withRewardsWallet('<!doctype html><html lang="en"><head></head></html>', wallet)).toBe(`<!doctype html><html lang="en" data-rewards-wallet="${wallet}"><head></head></html>`);
-    expect(await served(loadStaticSite(dir, { rewardsWallet: null })!)).toBe(page);
-    expect(await served(without)).not.toContain("data-rewards-wallet");
-    // Only a plain Solana address is ever written.
-    for (const bad of ["", "0x1234", "0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB", `${wallet}"><script>`, "not an address"]) expect(() => withRewardsWallet(page, bad), bad).toThrow();
-    expect(withWallet.scriptHashes).toEqual(without.scriptHashes);
   });
 
   it("writes the service banner into the page when the server has one to show, and only then", () => {
@@ -1025,7 +1017,7 @@ describe("site serving", () => {
     expect((await answer({ siteUrl: "https://saplingdex.example" })).body).toContain('<meta property="og:image" content="https://saplingdex.example/share.png" />');
     expect((await answer({ siteUrl: "https://saplingdex.example" })).body).toBe(withCanonical(withSiteUrl(page, "https://saplingdex.example"), "https://saplingdex.example", "/"));
     // Each page that may be indexed names its own address; an order's page and an unknown address name none, and neither does a site that knows no address of its own.
-    for (const address of ["/docs", "/track", "/rewards", "/terms", "/privacy", "/docs/fees"]) expect((await answer({ siteUrl: "https://saplingdex.example" }, address)).body, address).toContain(`<link rel="canonical" href="https://saplingdex.example${address}" />`);
+    for (const address of ["/docs", "/track", "/terms", "/privacy", "/docs/fees"]) expect((await answer({ siteUrl: "https://saplingdex.example" }, address)).body, address).toContain(`<link rel="canonical" href="https://saplingdex.example${address}" />`);
     expect((await answer({ siteUrl: "https://saplingdex.example" }, "/docs")).body.match(/rel="canonical"/g)).toHaveLength(1);
     for (const address of [`/order/${"A".repeat(27)}`, "/nowhere", "/docs/private"]) expect((await answer({ siteUrl: "https://saplingdex.example" }, address)).body, address).not.toContain('rel="canonical"');
     expect((await answer({}, "/docs")).body).not.toContain('rel="canonical"');
@@ -1049,7 +1041,7 @@ describe("site serving", () => {
     // Its address is exact, and it brings no other page with it.
     for (const near of ["/docs/private/", "/docs/Private", "/docs/private/more", "/docs/privately", "/private", "/states", "/token"]) expect((await answer({ privateRouting: true }, near)).status, near).toBe(404);
     // Every other page of the documentation is there either way, the page on Ghost mode among them.
-    for (const privateRouting of [false, true]) for (const route of ["/docs", "/docs/fees", "/docs/chains", "/docs/refunds", "/docs/safety", "/docs/ghost-mode", "/docs/rewards", "/docs/faq"]) expect((await answer({ privateRouting }, route)).status, route).toBe(200);
+    for (const privateRouting of [false, true]) for (const route of ["/docs", "/docs/fees", "/docs/chains", "/docs/refunds", "/docs/safety", "/docs/ghost-mode", "/docs/faq"]) expect((await answer({ privateRouting }, route)).status, route).toBe(200);
     // Its address is exact too.
     for (const privateRouting of [false, true]) for (const near of ["/docs/ghost", "/docs/ghost-mode/", "/docs/Ghost-mode", "/docs/ghost-modes", "/ghost-mode"]) expect((await answer({ privateRouting }, near)).status, near).toBe(404);
   });
@@ -1208,7 +1200,7 @@ describe("reading replies from outside services", () => {
     const big = () => stream(50, 100_000);
     const client = createOneClick({ apiKey: null, maxPerMin: 100, allowLive: true, log: createLogger(() => {}), fetchImpl: async () => big() });
     expect(await client.quote({ dry: true })).toEqual({ ok: false, kind: "unavailable", status: null });
-    const rpc = createRpc({ urls: { bsc: "https://x", eth: "https://x", base: "https://x", arb: "https://x", sol: "https://x" }, fetchImpl: async () => big() });
+    const rpc = createRpc({ urls: { bsc: "https://x", eth: "https://x", base: "https://x", arb: "https://x" }, fetchImpl: async () => big() });
     expect(await rpc.call("eth", "eth_chainId", [])).toEqual({ ok: false, code: -32603, message: "RPC unavailable" });
   });
 });

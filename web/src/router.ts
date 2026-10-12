@@ -34,7 +34,6 @@ export type Route =
   | { page: "order"; id: string }
   | { page: "track" }
   | { page: "docs"; slug: DocSlug | null }
-  | { page: "rewards" }
   | { page: "stats" }
   | { page: "terms" }
   | { page: "privacy" }

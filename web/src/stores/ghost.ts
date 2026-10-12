@@ -9,8 +9,7 @@
 // the page is put under a stricter content policy. A policy can be added to a page and never taken
 // away, so turning it off loads the page again.
 //
-// The site connects to no wallet anywhere. The one thing that ever speaks to a wallet is the
-// Rewards page's sign-in, and that is off in this mode: its code is not fetched and nothing is asked.
+// The site connects to no wallet anywhere, with the mode on or off: it never speaks to one at all.
 
 import { create } from "zustand";
 import { clearBrowser, dropGhostFlag, ghostHolds, holdGhost } from "../lib/kept.ts";

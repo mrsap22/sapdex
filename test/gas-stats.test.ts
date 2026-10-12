@@ -1,6 +1,5 @@
-// "Add gas" in the site's totals and in the record of points. A delivered gas order adds its
-// dollars wherever dollars are summed, and its points to the rewards address, once. It is not a
-// swap: it adds to no count of swaps, has no row among the recent swaps and no delivery time, and
+// "Add gas" in the site's totals. A delivered gas order adds its dollars wherever dollars are
+// summed, once. It is not a swap: it adds to no count of swaps, has no row among the recent swaps and no delivery time, and
 // a chain that only a gas order was sent from is not yet a chain a swap was sent from.
 
 import { createHash } from "node:crypto";
@@ -10,14 +9,12 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { toChecksumAddress } from "../shared/addresses.ts";
 import type { CoinRef, OrderStatus, OrderView, StatsResponse } from "../shared/api.ts";
-import { pointsMicro, weekOf } from "../shared/rewards.ts";
 import { gasIdOf } from "../server/gas.ts";
 import { silentLogger } from "../server/log.ts";
-import { createRewards, orderHash } from "../server/rewards.ts";
 import { createSettler } from "../server/settle.ts";
 import { createStats, type Stats, type StatsFile } from "../server/stats.ts";
 import { createOrderStore, type OrderRecord, type OrderState, type OrderStore } from "../server/store.ts";
-import { ADDR, asOrder, ASSET, harness, putMined, type Harness, type HarnessOptions } from "./helpers.ts";
+import { asOrder, ASSET, harness, putMined, type Harness, type HarnessOptions } from "./helpers.ts";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -68,7 +65,6 @@ function order(n: number, createdAt: number, how: Made = {}): OrderRecord {
     refundFee: null,
     recipient: address(`recipient ${n}`),
     refundTo: address(`refund ${n}`),
-    rewardsAddress: address(`rewards ${n}`),
     confidentiality: "basic",
     depositAddress: address(`deposit ${n}`),
     depositMemo: null,
@@ -348,9 +344,8 @@ describe("a delivered gas order adds its dollars, and is not a swap", () => {
   });
 });
 
-describe("on the running server: volume and points are counted once for each order of a pair", () => {
-  // The rewards address is a Solana address: points are kept under one.
-  const WHO = { sender: address("sender"), recipient: address("recipient"), refundTo: address("refund"), rewards: ADDR.sol };
+describe("on the running server: volume is counted once for each order of a pair", () => {
+  const WHO = { sender: address("sender"), recipient: address("recipient"), refundTo: address("refund") };
   const PEOPLE = { recipient: WHO.recipient, refundTo: WHO.refundTo };
   const SWAP_AMOUNT = "5000000000000000";
   const GAS_AMOUNT = "1200000000000000";
@@ -359,12 +354,12 @@ describe("on the running server: volume and points are counted once for each ord
     open.push(h);
     return h;
   }
-  /** A swap with gas, as the page asks for one, with the swap's points going to a rewards address. */
+  /** A swap with gas, as the page asks for one. */
   async function pair(h: Harness, extra: Record<string, unknown> = {}): Promise<OrderView> {
     const session = await h.session();
     const preview = (await h.post("/api/gas", { from: ASSET.baseEth, to: ASSET.arbUsdc, pay: "manual", ...PEOPLE }, { session })).body.gas.quote;
     const gas = { amount: preview.amountIn, reviewed: { amountOut: preview.amountOut, minAmountOut: preview.minAmountOut, totalFeeBps: preview.fees.appBps + preview.fees.providerBps, routing: preview.routing } };
-    return asOrder(await h.order({ ...PEOPLE, rewardsAddress: WHO.rewards, gas, ...extra }));
+    return asOrder(await h.order({ ...PEOPLE, gas, ...extra }));
   }
   async function step(h: Harness, id: string, ms: number): Promise<void> {
     h.clock.t += ms;
@@ -382,22 +377,20 @@ describe("on the running server: volume and points are counted once for each ord
     await step(h, id, 15_000);
     return hash;
   }
-  const entryFile = (h: Harness, id: string) => path.join(h.dataDir, "rewards", "entries", `${sha(id)}.json`);
-  /** The server started again on the same folder: every order on disk is put to the totals and to the points once more, as at any start. */
+  /** The server started again on the same folder: every order on disk is put to the totals once more, as at any start. */
   function startedAgain(h: Harness) {
-    const rewards = createRewards(h.dataDir);
     const stats = createStats(h.dataDir, { now: () => h.clock.t });
     const store: OrderStore = createOrderStore(h.dataDir, { now: () => h.clock.t });
-    const settler = createSettler({ store, stats, rewards, log: silentLogger });
+    const settler = createSettler({ store, stats, log: silentLogger });
     for (const id of store.ids()) {
       const record = store.get(id);
       if (record !== null) settler.settle(record, false);
     }
     stats.save();
-    return { rewards, stats, store };
+    return { stats, store };
   }
 
-  it("a pair made, paid and delivered: one swap and one row on the Stats page with the dollars of both, and the points of each order written once to the swap's rewards address", async () => {
+  it("a pair made, paid and delivered: one swap and one row on the Stats page with the dollars of both, counted once", async () => {
     const h = await start();
     const order = await pair(h);
     const gasId = gasIdOf(order.id);
@@ -419,16 +412,6 @@ describe("on the running server: volume and points are counted once for each ord
     expect(file).toMatchObject({ swaps: 1, volumeMicro: "15500000", deliveriesTimed: 1, chains: { base: { swaps: 1, volumeMicro: "15500000" } } });
     expect(file.rows).toHaveLength(1);
 
-    // The points: an entry for each order, each by its own value, both for the address the swap named.
-    const entries = h.rewards.entriesFor(WHO.rewards);
-    expect(entries.map((entry) => [entry.order, entry.volumeUsdMicro, entry.to.symbol, entry.to.chain]).sort()).toEqual(
-      [[orderHash(order.id), "12500000", "USDC", "arb"], [orderHash(gasId), "3000000", "ETH", "arb"]].sort(),
-    );
-    expect(entries.every((entry) => entry.address === WHO.rewards && entry.reasons.length === 0)).toBe(true);
-    expect(fs.readdirSync(path.join(h.dataDir, "rewards", "entries")).sort()).toEqual([`${sha(order.id)}.json`, `${sha(gasId)}.json`].sort());
-    // Ten points to the dollar, on $15.50: 155 points, once.
-    expect(h.rewards.weekPoints(weekOf(h.clock.t))).toEqual(new Map([[WHO.rewards, pointsMicro(15_500_000n)]]));
-    expect(pointsMicro(15_500_000n)).toBe(155_000_000n);
 
     // Counted once, whatever is saved again afterwards, and after a restart.
     for (const id of [order.id, gasId]) {
@@ -436,14 +419,11 @@ describe("on the running server: volume and points are counted once for each ord
       h.store.saveState(id, { ...record.state, updatedAt: iso(h.clock.t + 1000) });
     }
     expect(((await h.get("/api/stats")).body as StatsResponse).totals).toMatchObject({ swaps: 1, volumeUsd: 15 });
-    expect(h.rewards.entriesFor(WHO.rewards)).toHaveLength(2);
     const again = startedAgain(h);
     expect(again.stats.view()).toEqual((await h.get("/api/stats")).body);
-    expect(again.rewards.entriesFor(WHO.rewards)).toHaveLength(2);
-    expect(again.rewards.weekPoints(weekOf(h.clock.t))).toEqual(new Map([[WHO.rewards, 155_000_000n]]));
   });
 
-  it("only the gas order is paid: its dollars and its points are counted, and there is no swap, no row and no chain used", async () => {
+  it("only the gas order is paid: its dollars are counted, and there is no swap, no row and no chain used", async () => {
     const h = await start();
     const order = await pair(h);
     const gasId = gasIdOf(order.id);
@@ -451,29 +431,19 @@ describe("on the running server: volume and points are counted once for each ord
     const stats = (await h.get("/api/stats")).body as StatsResponse;
     expect(stats.totals).toMatchObject({ swaps: 0, volumeUsd: 3, chains: 0, deliverySeconds: null });
     expect(stats).toMatchObject({ feed: [], chainsUsed: [], chains: [], coins: [base("ETH", 3)] });
-    expect(h.rewards.entriesFor(WHO.rewards).map((entry) => [entry.order, entry.volumeUsdMicro])).toEqual([[orderHash(gasId), "3000000"]]);
-    expect(fs.existsSync(entryFile(h, order.id))).toBe(false);
     // The same after a restart.
     const again = startedAgain(h);
     expect(again.stats.view()).toEqual(stats);
-    expect(again.rewards.entriesFor(WHO.rewards)).toHaveLength(1);
-    // A gas order asked for with no rewards address adds no points, like any order that names none.
-    const none = await start();
-    const unnamed = await pair(none, { rewardsAddress: undefined });
-    await payAndDeliver(none, gasIdOf(unnamed.id), "gas deposit unnamed");
-    expect(fs.readdirSync(path.join(none.dataDir, "rewards", "entries"))).toEqual([]);
-    expect(((await none.get("/api/stats")).body as StatsResponse).totals).toMatchObject({ swaps: 0, volumeUsd: 3 });
   });
 
-  it("in Ghost mode: both are counted in the totals with no row, both leave their points, and both records are deleted", async () => {
+  it("in Ghost mode: both are counted in the totals with no row, and both records are deleted", async () => {
     const h = await start();
     const order = await pair(h, { ghost: true });
     const gasId = gasIdOf(order.id);
     await payAndDeliver(h, gasId, "ghost gas deposit");
-    // The gas order's record went the moment it was delivered, after it was counted and its points were written.
+    // The gas order's record went the moment it was delivered, after it was counted.
     expect(h.store.ids()).toEqual([order.id]);
     expect(((await h.get("/api/stats")).body as StatsResponse).totals).toMatchObject({ swaps: 0, volumeUsd: 3, chains: 0 });
-    expect(fs.existsSync(entryFile(h, gasId))).toBe(true);
     await payAndDeliver(h, order.id, "ghost swap deposit");
     expect(h.store.ids()).toEqual([]);
     expect(fs.readdirSync(path.join(h.dataDir, "orders"))).toEqual([]);
@@ -484,11 +454,8 @@ describe("on the running server: volume and points are counted once for each ord
     // No rows: neither order of a Ghost pair is ever listed.
     expect(stats.feed).toEqual([]);
     expect((JSON.parse(fs.readFileSync(path.join(h.dataDir, "stats", "stats.json"), "utf8")) as StatsFile).rows).toEqual([]);
-    expect(h.rewards.entriesFor(WHO.rewards).map((entry) => entry.volumeUsdMicro).sort()).toEqual(["12500000", "3000000"]);
     // The same after a restart: nothing is counted again, and nothing is listed.
     const again = startedAgain(h);
     expect(again.stats.view()).toEqual(stats);
-    expect(again.rewards.entriesFor(WHO.rewards)).toHaveLength(2);
-    expect(again.rewards.weekPoints(weekOf(h.clock.t))).toEqual(new Map([[WHO.rewards, 155_000_000n]]));
   });
 });

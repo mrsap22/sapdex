@@ -1,8 +1,7 @@
 // Ghost mode, walked in a real browser against a practice server.
 //
 // What it holds the site to, with the mode on:
-//   - on every route the page asks nothing of any address but the site's own, and the code that
-//     speaks to a wallet (the Rewards sign-in's) is never fetched;
+//   - on every route the page asks nothing of any address but the site's own;
 //   - the browser is told to refuse anything else (a request to another site made from the page
 //     itself fails), on a page that was switched into the mode and on one loaded in it;
 //   - after a whole swap, from a quote to the order's end, the browser's storage holds the mode's
@@ -14,13 +13,12 @@
 //     and the page is not loaded again for it. With "Also clear" what the site itself kept goes;
 //     switching it off brings the ordinary site back with the orders made earlier still listed.
 //
-// It also photographs the switch, the sheet, the swap card, an order's page, Rewards and Stats in the
+// It also photographs the switch, the sheet, the swap card, an order's page and Stats in the
 // mode, at three widths in both themes.
 
 import path from "node:path";
 import type { Browser, BrowserContext, Page } from "playwright-core";
 import { freshSol, testControl } from "./order-walk.ts";
-import { walletCodeAmong } from "./solana-wallet.ts";
 
 export interface WalkResult {
   complaints: string[];
@@ -84,11 +82,11 @@ export async function ghostWalk(browser: Browser, options: { practiceUrl: string
       await sheet.waitFor({ timeout: 10_000 });
       await page.waitForTimeout(400);
       const said = (await sheet.innerText()).replace(/\s+/g, " ");
-      for (const line of ["While it is on, two things change.", "The Rewards sign-in is off.", "With it on or off, no wallet is connected to pay, and this page asks nothing of any address but this site's own.", "Nothing is kept in this browser but the switch itself", "its record is deleted from the server the moment it is delivered or refunded", "still public on their own chains"]) expectThat(said.includes(line), `the sheet does not say "${line}"`);
+      for (const line of ["While it is on, two things change.", "With it on or off, no wallet is connected to pay, and this page asks nothing of any address but this site's own.", "Nothing is kept in this browser but the switch itself", "its record is deleted from the server the moment it is delivered or refunded", "still public on their own chains"]) expectThat(said.includes(line), `the sheet does not say "${line}"`);
       expectThat(!/anonymous|untraceable/i.test(said), "the sheet uses a word it must never use");
       // Its first line is about what this browser keeps.
       const firstLine = ((await sheet.locator(".ghost-point").first().innerText()) ?? "").replace(/\s+/g, " ").trim();
-      expectThat(firstLine === "Nothing is kept in this browser but the switch itself, for this tab only, so that loading the page again does not turn it off. The Rewards sign-in is off.", `the sheet's first line reads "${firstLine}"`);
+      expectThat(firstLine === "Nothing is kept in this browser but the switch itself, for this tab only, so that loading the page again does not turn it off.", `the sheet's first line reads "${firstLine}"`);
       await shoot("sheet");
       // "Not now" changes nothing.
       await sheet.getByRole("button", { name: "Not now", exact: true }).click();
@@ -114,12 +112,7 @@ export async function ghostWalk(browser: Browser, options: { practiceUrl: string
       // The browser itself now refuses another site, asked from the page.
       const refused = await page.evaluate(`fetch("https://example.com/", { mode: "no-cors" }).then(() => "answered", () => "refused")`);
       expectThat(refused === "refused", "a request to another site made from a page in the mode was not refused");
-      // Rewards and Stats in the mode.
-      await visit(page, new URL("/rewards", practiceUrl).toString());
-      await page.getByText("Sign-in is off in Ghost mode. Turn it off to see your points.").waitFor({ timeout: 15_000 }).catch(() => expectThat(false, "the Rewards page does not say that sign-in is off in the mode"));
-      expectThat((await page.getByRole("button", { name: /Connect|Sign in/ }).count()) === 0, "the Rewards page still offers to sign in");
-      await page.waitForTimeout(600);
-      await shoot("rewards");
+      // Stats in the mode.
       await visit(page, new URL("/stats", practiceUrl).toString());
       await page.locator(".stats-tiles").waitFor({ timeout: 15_000 });
       await page.waitForTimeout(1800);
@@ -148,8 +141,6 @@ export async function ghostWalk(browser: Browser, options: { practiceUrl: string
       // From switching on to here, nothing was asked of another site (the one refused try apart, which never left).
       const strangers = outside(asked).filter((url) => !url.startsWith("https://example.com/"));
       expectThat(strangers.length === 0, `the page asked another site for something: ${[...new Set(strangers)].slice(0, 4).join(", ")}`);
-      const walletCode = await walletCodeAmong(asked);
-      expectThat(walletCode.length === 0, `the code that speaks to a wallet was fetched: ${walletCode.join(", ")}`);
     } catch (error) {
       complaints.push(`${label}: ${(error as Error).message.split("\n")[0]}`);
     } finally {
@@ -182,7 +173,7 @@ export async function ghostWalk(browser: Browser, options: { practiceUrl: string
       ) as { status: number; body: Record<string, unknown> };
     try {
       // Every route, loaded in the mode from its first byte.
-      for (const route of round <= 2 ? ["/", "/track", "/rewards", "/stats", "/docs", "/docs/ghost-mode", "/docs/fees", "/terms", "/privacy", "/no-such-page"] : ["/"]) {
+      for (const route of round <= 2 ? ["/", "/track", "/stats", "/docs", "/docs/ghost-mode", "/docs/fees", "/terms", "/privacy", "/no-such-page"] : ["/"]) {
         await visit(page, new URL(route, practiceUrl).toString());
         await page.locator("footer").waitFor({ timeout: 20_000 });
         await page.waitForTimeout(900);
@@ -203,8 +194,6 @@ export async function ghostWalk(browser: Browser, options: { practiceUrl: string
       await review.waitFor();
       await page.waitForTimeout(350);
       const reviewed = (await review.innerText()).replace(/\s+/g, " ");
-      expectThat(reviewed.includes("Naming an address ties this swap's points to it. Leave it empty and this swap adds no points."), "the review does not say what naming a rewards address does");
-      expectThat((await review.getByLabel(/Rewards address/).inputValue().catch(() => "missing")) === "", "the review's rewards address is not an empty field");
       expectThat(!reviewed.includes("will be listed on the Stats page"), "the review says the deposit will be listed, which is not so in the mode");
       await shoot("review");
       await review.getByRole("checkbox").check();
@@ -248,8 +237,6 @@ export async function ghostWalk(browser: Browser, options: { practiceUrl: string
       expectThat(cookies.length === 0, `the browser was given ${cookies.length} cookie(s)`);
       const strangers = outside(asked).filter((url) => !url.startsWith("https://example.com/"));
       expectThat(strangers.length === 0, `the page asked another site for something: ${[...new Set(strangers)].slice(0, 4).join(", ")}`);
-      const software = await walletCodeAmong(asked);
-      expectThat(software.length === 0, `the code that speaks to a wallet was fetched in the mode: ${software.join(", ")}`);
     } catch (error) {
       complaints.push(`${label}: ${(error as Error).message.split("\n")[0]}`);
     } finally {

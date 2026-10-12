@@ -34,8 +34,6 @@ import { createSessionIssuer } from "../server/session.ts";
 import { createStats } from "../server/stats.ts";
 import { createOrderStore } from "../server/store.ts";
 import { createTokenService } from "../server/tokens.ts";
-import { createRewards, createSignIn } from "../server/rewards.ts";
-import { RESERVE_ASSET } from "../shared/rewards.ts";
 import { verifyQuoteResponse } from "../server/verify.ts";
 
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "saplingdex-live-"));
@@ -75,8 +73,6 @@ const app = createApp({
   rpc,
   limiters: createLimiters(),
   sessions: createSessionIssuer(),
-  rewards: createRewards(dataDir),
-  signIn: createSignIn(),
   stats: createStats(dataDir),
   site: null,
   now: Date.now,
@@ -102,9 +98,9 @@ const post = async (route: string, body: unknown) => {
 const list = (await (await fetch(`${url}/api/tokens`)).json()) as { tokens?: Array<{ id: string; symbol: string; chain: string; contract: string | null; decimals: number; price: string | null }> };
 const coins = list.tokens ?? [];
 check("coin list loads from the provider", coins.length > 50, `${coins.length} coins`);
-// The coin the pool is counted in is the provider's own "ZEC on Solana": the same mint, letter for letter.
+// The coin every swap on the first screen is to or from: ZEC on Solana.
 const zecOnSolana = coins.find((c) => c.chain === "sol" && c.symbol === "ZEC");
-check("ZEC on Solana is on the list, by the mint the pool is counted in, with a price", zecOnSolana !== undefined && zecOnSolana.contract === RESERVE_ASSET.contract && zecOnSolana.decimals === RESERVE_ASSET.decimals && zecOnSolana.price !== null, zecOnSolana === undefined ? "not listed" : `${zecOnSolana.contract}, ${zecOnSolana.decimals} decimals`);
+check("ZEC on Solana is on the list, with a price", zecOnSolana !== undefined && zecOnSolana.price !== null, zecOnSolana === undefined ? "not listed" : `${zecOnSolana.contract}`);
 check("the chains on the list", new Set(coins.map((c) => c.chain)).size >= 20, `${new Set(coins.map((c) => c.chain)).size} chains`);
 
 const find = (chain: string, symbol: string) => coins.find((c) => c.chain === chain && c.symbol === symbol);

@@ -3,7 +3,6 @@ import { useEffect, useId, useState } from "react";
 import { displayBps } from "../../../shared/amounts.ts";
 import type { QuoteView, TokenView } from "../../../shared/api.ts";
 import { chainName } from "../../../shared/chains.ts";
-import { briefPoints, swapPointsMicro } from "../../../shared/rewards.ts";
 import { IMPACT_BLOCK_BPS, IMPACT_WARN_BPS, SLOW_SWAP_SECONDS } from "../config.ts";
 import { aboutMinutes, appFeeWords, rateText, type RoutingNote } from "../lib/swap-logic.ts";
 import { Amount, Said } from "./Amount.tsx";
@@ -17,8 +16,6 @@ interface Props {
   stale: boolean;
   /** True while an amount is typed in. The quote's place is kept from then on, whatever comes of the quote, so that nothing moves when it arrives. */
   held?: boolean;
-  /** Whether this swap's points have somewhere to go before a rewards address is given. They never have: an address is asked for in the review. Where they have not, the line says nothing of points. */
-  pointsShown?: boolean;
   /** What the breakdown's first row says of this quote's routing (see routingNote). Null where the server routes in public: there is then no such row. */
   routing?: RoutingNote | null;
   /** Open the breakdown from the start. Only the page of component states uses it. */
@@ -57,13 +54,13 @@ function Pair({ main, sub, lead }: { main: React.ReactNode; sub: React.ReactNode
 }
 
 /**
- * The quote. Nothing at all until an amount is typed in; then one line: the rate, the points this
- * swap adds, and how long it takes. Pressing the line opens the rest (minimum received, the three
- * fees, the time, the points). The line's place is kept from the moment there is an amount, and its height never
+ * The quote. Nothing at all until an amount is typed in; then one line: the rate, and how long the
+ * swap takes. Pressing the line opens the rest (minimum received, the three fees, the time). The
+ * line's place is kept from the moment there is an amount, and its height never
  * changes, so a quote arriving or refreshing moves nothing. The line itself says nothing of routing;
  * where the server routes privately, the rest begins with a row that does.
  */
-export function QuotePanel({ quote, from, to, loading, stale, held = false, pointsShown = true, routing = null, startOpen = false, impactConfirmed, onConfirmImpact }: Props) {
+export function QuotePanel({ quote, from, to, loading, stale, held = false, routing = null, startOpen = false, impactConfirmed, onConfirmImpact }: Props) {
   const id = useId();
   const [expanded, setExpanded] = useState(startOpen);
   const ready = quote !== null && from !== null && to !== null;
@@ -76,8 +73,6 @@ export function QuotePanel({ quote, from, to, loading, stale, held = false, poin
   const open = ready || first || held;
   const impact = ready ? quote.priceImpactBps : null;
   const slow = ready && quote.timeEstimate > SLOW_SWAP_SECONDS;
-  // Points are counted from the dollar value of what is paid, as the quote gives it. No fee is part of the sum.
-  const points = ready && pointsShown ? swapPointsMicro(quote.amountInUsd) : null;
   const noFee = ready ? appFeeWords(quote) : null;
   const shown = ready && expanded;
 
@@ -92,20 +87,12 @@ export function QuotePanel({ quote, from, to, loading, stale, held = false, poin
                 <span className="quote-rate mono">
                   <Said text={rateText(from, to, BigInt(quote.amountIn), BigInt(quote.amountOut)) ?? ""} spoken={rateText(from, to, BigInt(quote.amountIn), BigInt(quote.amountOut), { spoken: true }) ?? ""} />
                 </span>
-                {/* The time comes first here and is drawn last (the row runs from the right): where the line has no room
-                    for both labels, it is the points that go to a second row, out of sight, and never the time or the rate.
-                    The points are also a row of the breakdown. */}
                 <span className="quote-chips">
                   <span className="chip" data-tone={slow ? "warning" : undefined}>
                     <span className="sr-only">, </span>
                     {slow ? <TriangleAlert size={16} strokeWidth={1.5} aria-hidden="true" /> : null}
                     {aboutMinutes(quote.timeEstimate)}
                   </span>
-                  {points !== null && points > 0n ? (
-                    <span className="chip" data-tone="points">
-                      <span className="sr-only">, </span>+{briefPoints(points)} points
-                    </span>
-                  ) : null}
                 </span>
                 <ChevronDown size={16} strokeWidth={1.5} aria-hidden="true" />
                 <span className="sr-only">. {expanded ? "Hide" : "Show"} the fees</span>
@@ -167,11 +154,6 @@ export function QuotePanel({ quote, from, to, loading, stale, held = false, poin
                         aboutMinutes(quote.timeEstimate)
                       )}
                     </Row>
-                    {points !== null && points > 0n ? (
-                      <Row label="Points" tall>
-                        <Pair lead="main" main={<span className="mono">+{briefPoints(points)}</span>} sub="when delivered" />
-                      </Row>
-                    ) : null}
                   </dl>
                 ) : null}
               </div>

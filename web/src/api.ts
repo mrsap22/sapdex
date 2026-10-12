@@ -1,8 +1,7 @@
 // The browser's only line to the outside: our own server. It never calls the
 // swap provider and never holds a key.
 
-import type { ApiErrorBody, ConfigResponse, CreateOrderBody, ErrorCode, GasBody, GasLine, GasResponse, OrderView, QuoteBody, QuoteView, StatsResponse, StatusResponse, TokenFacts, TokensResponse } from "../../shared/api.ts";
-import type { RewardsPublic, RewardsView } from "../../shared/rewards.ts";
+import type { ApiErrorBody, ConfigResponse, CreateOrderBody, ErrorCode, GasBody, GasLine, GasResponse, OrderView, QuoteBody, QuoteView, StatsResponse, StatusResponse, TokensResponse } from "../../shared/api.ts";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -54,8 +53,8 @@ async function parse<T>(res: Response): Promise<T> {
   throw new ApiError(res.status, "unavailable", "Something went wrong. Try again.");
 }
 
-async function send<T>(method: "GET" | "POST", path: string, body?: unknown, signal?: AbortSignal, extra: Record<string, string> = {}): Promise<T> {
-  const headers: Record<string, string> = { ...extra };
+async function send<T>(method: "GET" | "POST", path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+  const headers: Record<string, string> = {};
   if (body !== undefined) headers["content-type"] = "application/json";
   if (method === "POST" && session !== null) headers["x-session"] = session.token;
   let res: Response;
@@ -108,16 +107,6 @@ export const api = {
   practice: (id: string, action: string) => post<{ ok: true }>(`/api/practice/${encodeURIComponent(id)}`, { action }),
   /** The site's own totals and its rounded list of recent swaps, for the Stats page. */
   stats: () => send<StatsResponse>("GET", "/api/stats", undefined, AbortSignal.timeout(15_000)),
-  /** What Sapling says of the site's coin, as this site's own server last read it. */
-  tokenFacts: () => send<TokenFacts>("GET", "/api/token", undefined, AbortSignal.timeout(15_000)),
-  /** What anyone may see of the rewards: the week's dates and its total of points, the weeks already paid, the current pool. */
-  rewards: () => send<RewardsPublic>("GET", "/api/rewards"),
-  /** The first half of the Rewards page's sign-in: the message to sign for an address, with its one-time code. */
-  rewardsCode: (address: string) => post<{ message: string; nonce: string; issuedAt: string; expiresAt: string }>("/api/rewards/code", { address }, AbortSignal.timeout(15_000)),
-  /** The second half: the signature, for a sign-in that lasts half an hour. */
-  rewardsSession: (nonce: string, signature: string) => post<{ address: string; token: string; expiresAt: string }>("/api/rewards/session", { nonce, signature }, AbortSignal.timeout(15_000)),
-  /** One's own points, with a sign-in. */
-  rewardsMine: (token: string) => send<RewardsView>("GET", "/api/rewards/me", undefined, AbortSignal.timeout(15_000), { "x-rewards-session": token }),
   /**
    * One read of a chain through this site's own route. Returns the plain result; throws when the
    * route cannot be reached or refuses the call.

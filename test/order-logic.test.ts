@@ -28,7 +28,6 @@ function order(overrides: Partial<OrderView> = {}): OrderView {
     refundFee: null,
     recipient: RECIPIENT,
     refundTo: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
-    rewardsAddress: null,
     depositAddress: "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
     depositMemo: null,
     depositsOpen: true,
@@ -239,7 +238,7 @@ describe("how an order's page says it was routed", () => {
     expect(routingNote("basic", old)).toEqual({ private: false, text: "Public" });
   });
 
-  it("a private order's fee row and points read as a public order's do, and an order with no SaplingDex fee says so", () => {
+  it("a private order's fee row reads as a public order's does, and an order with no SaplingDex fee says so", () => {
     for (const paid of [old, inPublic, privately]) {
       expect(appFeeWords(paid)).toBeNull();
       expect(feeFree(paid)).toBe(false);
@@ -250,7 +249,7 @@ describe("how an order's page says it was routed", () => {
   });
 
   it("is the order that was reviewed only when it was made by the route that was on screen", () => {
-    const reviewed = (o: OrderView, routing?: OrderView["routing"]) => ({ from: o.from.id, to: o.to.id, amountIn: o.amountIn, minAmountOut: o.minAmountOut, slippageBps: o.slippageBps, recipient: o.recipient, refundTo: o.refundTo, rewardsAddress: o.rewardsAddress, ...(routing !== undefined ? { routing } : {}) });
+    const reviewed = (o: OrderView, routing?: OrderView["routing"]) => ({ from: o.from.id, to: o.to.id, amountIn: o.amountIn, minAmountOut: o.minAmountOut, slippageBps: o.slippageBps, recipient: o.recipient, refundTo: o.refundTo, ...(routing !== undefined ? { routing } : {}) });
     expect(orderDiffers(privately, reviewed(privately, PRIVATELY))).toBeNull();
     expect(orderDiffers(inPublic, reviewed(inPublic, IN_PUBLIC))).toBeNull();
     expect(orderDiffers(inPublic, reviewed(inPublic, PRIVATELY))).toBe("the routing");

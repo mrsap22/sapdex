@@ -103,10 +103,10 @@ const FAQ_WALLET = "No, and you cannot: the site connects to no wallet. You pay 
 const HOME_STEP = "Send one transfer to the deposit address shown; with Add gas on, a second for the gas. The order's page follows it to the end.";
 const TERMS_PARAGRAPH = "With Add gas switched on, confirming makes two orders: one for the swap, and one for the gas. Each is an order of its own, with its own deposit address, deadline and refund, and each is paid separately. If the gas order cannot be made, the swap is made all the same.";
 const PRIVACY_ITEM =
-  "Add gas. When gas is added to a swap, the gas order is a second order of its own, kept as any order is and for as long. The swap's record notes whether its gas order was made, and the gas order's record that it is one. The gas order's ID is worked out from the swap's, which is how the swap's page shows both; neither record holds the other's ID. A delivered gas order adds its value in US dollars to the running totals, with no row of its own and without being counted as a swap, and its points are written down as set out under Points. Where the two are made in Ghost mode, each is deleted as set out under Ghost mode, below.";
+  "Add gas. When gas is added to a swap, the gas order is a second order of its own, kept as any order is and for as long. The swap's record notes whether its gas order was made, and the gas order's record that it is one. The gas order's ID is worked out from the swap's, which is how the swap's page shows both; neither record holds the other's ID. A delivered gas order adds its value in US dollars to the running totals, with no row of its own and without being counted as a swap. Where the two are made in Ghost mode, each is deleted as set out under Ghost mode, below.";
 // The same four places where swaps are routed in public: as they have always read.
 const GUIDE_PAY_PUBLIC = "Send the exact amount to the deposit address shown, from any wallet. The site connects to no wallet. You send the coins yourself.";
-const SAFETY_WALLET_PUBLIC = "To pay, this site asks your wallet for nothing: it connects to no wallet. You make one plain transfer yourself, of the order's amount, to the order's deposit address. Paying never needs an approval of spending or a signed message. One page speaks to a wallet, and only if you press sign in";
+const SAFETY_WALLET_PUBLIC = "To pay, this site asks your wallet for nothing: it connects to no wallet. You make one plain transfer yourself, of the order's amount, to the order's deposit address. Paying never needs an approval of spending or a signed message. This site never speaks to a wallet at all.";
 const FAQ_WALLET_PUBLIC = "No, and you cannot: the site connects to no wallet. You pay by sending to the deposit address shown for your order, from any wallet. What happens if a swap fails?";
 const HOME_STEP_PUBLIC = "Send one transfer to the deposit address shown. The order's page follows it to the end.";
 
@@ -125,13 +125,13 @@ describe("the Docs' page on Add gas", () => {
     expect([...docSlugs(false)]).toEqual(DOC_SLUGS.filter((slug) => slug !== "private" && slug !== "add-gas"));
     expect(docExists(GAS_DOC_SLUG, true)).toBe(true);
     expect(docExists(GAS_DOC_SLUG, false)).toBe(false);
-    // In the contents: after "Ghost mode", before "Points and weekly rewards"; where swaps are routed in public, nowhere.
+    // In the contents: after "Ghost mode", before "Questions"; where swaps are routed in public, nowhere.
     expect(GAS_DOC).toEqual({ href: "/docs/add-gas", title: "Add gas", group: "Guide" });
     const pages = docPages(true).map((page) => page.href);
     expect(pages.indexOf("/docs/add-gas")).toBe(pages.indexOf("/docs/ghost-mode") + 1);
-    expect(pages.indexOf("/docs/add-gas")).toBe(pages.indexOf("/docs/rewards") - 1);
+    expect(pages.indexOf("/docs/add-gas")).toBe(pages.indexOf("/docs/faq") - 1);
     expect(DOC_SLUGS.indexOf("add-gas")).toBe(DOC_SLUGS.indexOf("ghost-mode") + 1);
-    expect(neighbours("/docs/add-gas", docPages(true))).toMatchObject({ previous: { href: "/docs/ghost-mode" }, next: { href: "/docs/rewards" } });
+    expect(neighbours("/docs/add-gas", docPages(true))).toMatchObject({ previous: { href: "/docs/ghost-mode" }, next: { href: "/docs/faq" } });
     for (const list of [DOC_PAGES, docPages(false)]) expect(list.some((page) => page.href === GAS_DOC.href || /gas/i.test(page.title))).toBe(false);
     expect(neighbours("/docs/add-gas", docPages(false))).toEqual({ previous: null, next: null });
     // Whatever asks without saying how swaps are routed is given the public answer, so the page cannot be listed by oversight.
@@ -142,9 +142,9 @@ describe("the Docs' page on Add gas", () => {
     expect(markup).toContain('<a href="/docs/add-gas" class="docs-page-link" aria-current="page">Add gas</a>');
     for (const other of [docsPage(null), docsPage("fees"), docsPage("ghost-mode"), docsPage("faq"), privacy, terms]) expect(draw(other)).toContain('<a href="/docs/add-gas" class="docs-page-link">Add gas</a>');
     expect(markup).toMatch(/<a href="\/docs\/ghost-mode" class="docs-turn-link" data-way="previous">/);
-    expect(markup).toMatch(/<a href="\/docs\/rewards" class="docs-turn-link" data-way="next">/);
+    expect(markup).toMatch(/<a href="\/docs\/faq" class="docs-turn-link" data-way="next">/);
     expect(draw(docsPage("ghost-mode"))).toMatch(/<a href="\/docs\/add-gas" class="docs-turn-link" data-way="next">/);
-    expect(draw(docsPage("rewards"))).toMatch(/<a href="\/docs\/add-gas" class="docs-turn-link" data-way="previous">/);
+    expect(draw(docsPage("faq"))).toMatch(/<a href="\/docs\/add-gas" class="docs-turn-link" data-way="previous">/);
   });
 
   describe("the server's own answer for its address", () => {
@@ -185,7 +185,7 @@ describe("the Docs' page on Add gas", () => {
 
   it("has these sections, in this order", () => {
     for (const config of [ROUTED_PRIVATELY, WITHOUT_STATS]) {
-      expect(sections(draw(gasDocs, config))).toEqual(["what: What it does", "when: When the switch is there", "payments: Two payments", "alone: Each order stands alone", "where: Where the gas goes", "cost: What it costs", "points: Points and totals", "ghost-mode: In Ghost mode"]);
+      expect(sections(draw(gasDocs, config))).toEqual(["what: What it does", "when: When the switch is there", "payments: Two payments", "alone: Each order stands alone", "where: Where the gas goes", "cost: What it costs", "totals: In the totals", "ghost-mode: In Ghost mode"]);
     }
   });
 
@@ -270,13 +270,13 @@ describe("the Docs' page on Add gas", () => {
     expect(words(body(draw(gasDocs)))).not.toMatch(/%|basis points|\bbps\b/i);
   });
 
-  it("says what a delivered gas order adds: points as any order, its dollars to the volume, and neither a swap to the count nor a row to the list", () => {
+  it("says what a delivered gas order adds: its dollars to the volume, and neither a swap to the count nor a row to the list", () => {
     const withStats = draw(gasDocs);
-    expect(section(withStats, "points")).toBe("Points and totals A delivered gas order adds points as any order does. On the Stats page its value in US dollars is counted in the volume. It is not counted as another swap, and it has no row among the recent swaps.");
-    expect(withStats).toMatch(/<h2 id="points"[\s\S]*?<a href="\/docs\/rewards">points<\/a>[\s\S]*?<a href="\/stats">Stats page<\/a>/);
+    expect(section(withStats, "totals")).toBe("In the totals On the Stats page its value in US dollars is counted in the volume. It is not counted as another swap, and it has no row among the recent swaps.");
+    expect(withStats).toMatch(/<h2 id="totals"[\s\S]*?<a href="\/stats">Stats page<\/a>/);
     // Where the site has no Stats page, it names none.
     const without = draw(gasDocs, WITHOUT_STATS);
-    expect(section(without, "points")).toBe("Points and totals A delivered gas order adds points as any order does. The server's running totals count its value in US dollars in the volume. It is not counted as another swap, and no row is kept for it.");
+    expect(section(without, "totals")).toBe("In the totals The server's running totals count its value in US dollars in the volume. It is not counted as another swap, and no row is kept for it.");
     expect(body(without)).not.toMatch(/Stats page|href="\/stats"/);
   });
 
@@ -292,7 +292,7 @@ describe("the question on Add gas", () => {
     const ids = questions(true).map((item) => item.id);
     expect(ids.filter((id) => id === "add-gas")).toHaveLength(1);
     expect(ids.indexOf("add-gas")).toBe(ids.indexOf("ghost-mode") + 1);
-    expect(ids.indexOf("add-gas")).toBe(ids.indexOf("points") - 1);
+    expect(ids.indexOf("add-gas")).toBe(ids.indexOf("ghost-mode") + 1);
     expect(questions(true).find((item) => item.id === "add-gas")).toMatchObject({ question: "What is Add gas?", privateOnly: true });
     expect(questions(false).map((item) => item.id)).not.toContain("add-gas");
     expect(questions(false).some((item) => /gas/i.test(item.question))).toBe(false);
@@ -315,10 +315,10 @@ describe("the home page's line for Add gas", () => {
     for (const tokenSet of [false, true]) {
       expect(features(tokenSet, true).find((feature) => feature.key === "gas")).toEqual({ key: "gas", title: "Add gas", text: HOME_LINE, link: { href: "/docs/add-gas", label: "How Add gas works" } });
       // After Ghost mode, and before the token where there is one.
-      expect(features(tokenSet, true).map((feature) => feature.key)).toEqual(["swaps", "tracking", "rewards", "ghost", "gas", ...(tokenSet ? ["token"] : [])]);
+      expect(features(tokenSet, true).map((feature) => feature.key)).toEqual(["swaps", "tracking", "ghost", "gas", ...(tokenSet ? ["token"] : [])]);
       // Routed in public, or asked without saying how swaps are routed: it is not on the list, and nothing on the list speaks of gas.
       for (const list of [features(tokenSet, false), features(tokenSet)]) {
-        expect(list.map((feature) => feature.key)).toEqual(["swaps", "tracking", "rewards", "ghost", ...(tokenSet ? ["token"] : [])]);
+        expect(list.map((feature) => feature.key)).toEqual(["swaps", "tracking", "ghost", ...(tokenSet ? ["token"] : [])]);
         expect(JSON.stringify(list)).not.toMatch(/gas/i);
       }
     }
@@ -336,7 +336,7 @@ describe("the home page's line for Add gas", () => {
     expect(markup).toMatch(/<a href="\/docs\/add-gas" class="stage-link draw">How Add gas works/);
     // Every item has a tab, a panel and a drawing.
     const count = features(false, true).length;
-    expect(count).toBe(5);
+    expect(count).toBe(4);
     expect(markup.match(/<button type="button" role="tab"/g)).toHaveLength(count);
     expect(markup.match(/<div role="tabpanel"/g)).toHaveLength(count);
     expect(markup.match(/<div class="stage-art"><svg class="art" viewBox="0 0 280 200" aria-hidden="true" focusable="false">/g)).toHaveLength(count);
@@ -351,8 +351,8 @@ describe("the home page's line for Add gas", () => {
   });
 });
 
-/** The words the site never uses of points and rewards, wherever they would stand. */
-const REWARDS_NEVER = /\b(?:earn(?:s|ed|ing)?|yield(?:s)?|returns|APR|APY|passive|profit(?:s)?|income|interest|invest(?:ment|ing)?|dividend(?:s)?|airdrop(?:s)?|free money|risk-free)\b/i;
+/** The words the site never uses of what a swap brings, wherever they would stand. */
+const GAIN_NEVER = /\b(?:earn(?:s|ed|ing)?|yield(?:s)?|returns|APR|APY|passive|profit(?:s)?|income|interest|invest(?:ment|ing)?|dividend(?:s)?|airdrop(?:s)?|free money|risk-free)\b/i;
 /**
  * What is never promised of a wallet, of gas or of a route: that anything cannot be linked or
  * traced, that a link is broken, cut or gone, or that anything is wholly or always private.
@@ -407,19 +407,17 @@ describe("what the site says of Add gas, taken together", () => {
     expect(sections(draw(terms)).length).toBe(sections(draw(terms, ROUTED_IN_PUBLIC)).length + 1);
   });
 
-  it("uses none of the words the site never uses, and none of the words it never uses of points", () => {
+  it("uses none of the words the site never uses, and none that promise a gain", () => {
     const all = texts();
     expect(all).toHaveLength(10);
     for (const [where, text] of all) {
       expect(text.length, where).toBeGreaterThan(100);
       expect(NEVER.exec(allowed(text))?.[0] ?? null, where).toBeNull();
-      expect(REWARDS_NEVER.exec(text)?.[0] ?? null, where).toBeNull();
+      expect(GAIN_NEVER.exec(text)?.[0] ?? null, where).toBeNull();
     }
-    // The words it does use of points are the site's own.
-    expect(words(body(draw(gasDocs)))).toContain("A delivered gas order adds points as any order does.");
     // A check that can fail.
     for (const sentence of ["Gas arrives anonymously.", "An untraceable top-up.", "Guaranteed to arrive.", "It works like a mixer."]) expect(NEVER.test(sentence), sentence).toBe(true);
-    for (const sentence of ["Earn points on gas.", "The yield on gas.", "Gas returns more points.", "A 5% APR."]) expect(REWARDS_NEVER.test(sentence), sentence).toBe(true);
+    for (const sentence of ["Earn on gas.", "The yield on gas.", "Gas returns more.", "A 5% APR."]) expect(GAIN_NEVER.test(sentence), sentence).toBe(true);
   });
 
   it("the page, the answer and the line each say that there are two payments, that the gas goes to the same receiving address, and that it is privately routed", () => {
@@ -469,7 +467,7 @@ describe("what the site says of Add gas, taken together", () => {
   });
 });
 
-/** A page says that paying is one transfer. (Not the one plain message of the Rewards sign-in, which is no transfer.) */
+/** A page says that paying is one transfer. */
 const ONE_TRANSFER = /\b(?:one|a single|only one|just one) (?:plain )?transfer\b/i;
 /** The parts of a drawn page that each stand by themselves: a section of the documentation, a question, a step or an item of the home page. */
 const parts = (markup: string) => markup.split(/(?=<h2\b|<details\b|<li class="how-step"|<li class="statement"|<div role="tabpanel")/).map(words);
@@ -493,20 +491,20 @@ describe("what a wallet is asked for, where a swap can have gas added", () => {
   it("the page on what a wallet is asked for says that a second request is then expected, and still that nothing but a transfer ever is", () => {
     const wallet = section(draw(docsPage("safety")), "wallet");
     expect(wallet).toContain(SAFETY_WALLET);
-    expect(wallet).toContain("Anything else is not SaplingDex. If a page in SaplingDex's name asks you to connect a wallet to pay, to approve spending, or to sign a transaction, close it.");
+    expect(wallet).toContain("This site never speaks to a wallet at all. No page of it asks one to connect, to approve spending or to sign anything. Anything else is not SaplingDex. If a page in SaplingDex's name asks you to connect a wallet, to approve spending, or to sign anything, close it.");
   });
 
   it("is a check that can fail", () => {
     for (const sentence of ["Your wallet is asked for one transfer.", "Pay with one plain transfer.", "A single transfer pays the order.", "Only one transfer is ever asked for."]) expect(ONE_TRANSFER.test(sentence), sentence).toBe(true);
-    // Two transfers are not one, and the one plain message of the Rewards sign-in is no transfer.
-    for (const sentence of ["It is asked for two transfers, one after the other.", "signing one plain message", "a second for the gas"]) expect(ONE_TRANSFER.test(sentence), sentence).toBe(false);
+    // Two transfers are not one.
+    for (const sentence of ["It is asked for two transfers, one after the other.", "a second for the gas"]) expect(ONE_TRANSFER.test(sentence), sentence).toBe(false);
     expect(parts('<h2 id="a">A</h2><p>one transfer</p><h2 id="b">B</h2><p>With Add gas, two.</p>').filter((text) => ONE_TRANSFER.test(text))).toEqual(["A one transfer"]);
   });
 
   it("the README states the rule the code keeps: no wallet is connected, and an order is paid by one transfer to its deposit address", () => {
     const readme = fs.readFileSync(path.resolve("README.md"), "utf8");
     expect(readme).toContain("- The site connects to no wallet. An order is paid by sending to its deposit address: one transfer for a swap, and a second, to its own address, when gas is added.");
-    expect(readme).toContain("- The one thing that ever speaks to a wallet is the Rewards page's sign-in: a Solana wallet signs one plain message. Never a transaction, an approval or a permit.");
+    expect(readme).toContain("- The site never speaks to any wallet at all: it asks none to connect, to sign or to approve, on any page, and the built site holds no code that could.");
     expect(readme).toContain("│ no wallet connected");
     expect(readme).not.toMatch(/asked for one plain transfer\.|signs one transfer|from a connected wallet|Connect"? is pressed/);
   });

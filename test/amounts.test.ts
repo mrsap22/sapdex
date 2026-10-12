@@ -8,12 +8,14 @@ import {
   displayUsd,
   formatExact,
   MAX_RAW,
+  MICRO,
   parseAmount,
   parseRaw,
   priceImpactBps,
   priceToScaled,
   rateRaw,
   usdScaled,
+  usdToMicro,
   worseByMoreThan,
 } from "../shared/amounts.ts";
 
@@ -244,5 +246,17 @@ describe("fee and price maths", () => {
   it("values an amount in USD", () => {
     // 0.5 BNB at $767.80 = $383.90
     expect(usdScaled(500000000000000000n, 18, priceToScaled(767.8)!)).toBe(383900000000000000000n);
+  });
+
+  it("reads a dollar value as millionths of a dollar, rounded down, and nothing that is not a plain decimal", () => {
+    expect(MICRO).toBe(1_000_000n);
+    expect(usdToMicro("1250")).toBe(1_250_000_000n);
+    expect(usdToMicro("12.5")).toBe(12_500_000n);
+    expect(usdToMicro("0.000001")).toBe(1n);
+    // What is finer than a millionth is dropped, never rounded up.
+    expect(usdToMicro("0.0000019")).toBe(1n);
+    expect(usdToMicro("1265.1299999")).toBe(1_265_129_999n);
+    expect(usdToMicro("0")).toBe(0n);
+    for (const not of ["", " 1", "1.", ".5", "-1", "1e3", "1,000", "0x10", "abc", "1.2.3", "9".repeat(41), 5, null, undefined]) expect(usdToMicro(not), String(not)).toBeNull();
   });
 });

@@ -55,7 +55,7 @@ export function ghostFlag(): boolean {
 /**
  * True from the moment Ghost mode is turned on until the page is next loaded. Turning the mode off
  * loads the page again, so a page that has once been held is held for as long as it lives: it
- * writes nothing, and it never fetches the code that asks a wallet to sign in on the Rewards page.
+ * writes nothing.
  */
 let holding = ghostFlag();
 

@@ -26,8 +26,8 @@ export interface Question {
  * Questions people ask before a first swap, answered in plain words. Every answer states what
  * happens, not what is hoped. One list: the home page shows it folded, the Docs show it open.
  *
- * Where swaps are routed privately there are two questions more, and three answers say what private
- * routing changes: what others can see, what a swap costs, and what adds points. Where they are
+ * Where swaps are routed privately there are two questions more, and two answers say what private
+ * routing changes: what others can see, and what a swap costs. Where they are
  * not, nothing on the list speaks of private routing (see `questions`).
  *
  * One question is about Ghost mode, and is asked everywhere: what it does, what it does not, and

@@ -1,7 +1,7 @@
 // The pages of the documentation, by the last part of their address. One list, used by the server
 // (which answers these addresses with the site's page and no others) and by the site's own router.
 
-export const DOC_SLUGS = ["fees", "chains", "refunds", "safety", "private", "ghost-mode", "add-gas", "rewards", "faq"] as const;
+export const DOC_SLUGS = ["fees", "chains", "refunds", "safety", "private", "ghost-mode", "add-gas", "faq"] as const;
 export type DocSlug = (typeof DOC_SLUGS)[number];
 
 /**
@@ -24,14 +24,11 @@ export const GAS_DOC_SLUG: DocSlug = "add-gas";
 /** The pages that exist only where swaps are routed privately. Everywhere else the address of each is no page at all. */
 export const PRIVATE_ONLY_DOC_SLUGS: readonly DocSlug[] = [PRIVATE_DOC_SLUG, GAS_DOC_SLUG];
 
-/** The page about points and rewards is not offered: its address is no page, and nothing links to it. */
-export const WITHDRAWN_DOC_SLUGS: readonly DocSlug[] = ["rewards"];
-
 export function isDocSlug(value: string): value is DocSlug {
-  return (DOC_SLUGS as readonly string[]).includes(value) && !(WITHDRAWN_DOC_SLUGS as readonly string[]).includes(value);
+  return (DOC_SLUGS as readonly string[]).includes(value);
 }
 
 /** The documentation's pages as they stand on this site: all of them where private routing is in force, and all but the pages that exist only there where it is not. */
 export function docSlugs(privateRouting: boolean): readonly DocSlug[] {
-  return DOC_SLUGS.filter((slug) => !WITHDRAWN_DOC_SLUGS.includes(slug) && (privateRouting || !PRIVATE_ONLY_DOC_SLUGS.includes(slug)));
+  return privateRouting ? DOC_SLUGS : DOC_SLUGS.filter((slug) => !PRIVATE_ONLY_DOC_SLUGS.includes(slug));
 }

@@ -69,7 +69,7 @@ describe("contrast, computed from the token file", () => {
         expect(contrast(vars["--focus-ring"]!, vars[background]!)).toBeGreaterThanOrEqual(3);
       });
 
-      it("the keyboard's mark is gold, solid: the one colour that is not ink, kept for it and for what is counted in ZEC", () => {
+      it("the keyboard's mark is gold, solid: the one colour that is not ink, kept for it alone", () => {
         expect(vars["--focus-ring"]).toBe(vars["--gold"]);
         expect(parseColour(vars["--focus-ring"]!).alpha).toBe(1);
         // Gold: more red than green, far more green than blue.
@@ -457,11 +457,14 @@ describe("the look is flat: one-pixel lines, square corners, and nothing that gl
     ]);
   });
 
-  it("gold is for what is counted in ZEC and for the keyboard's mark, and for nothing else", () => {
+  it("gold is for the keyboard's mark, and for nothing else: no rule of any stylesheet is drawn in it", () => {
     const gold: string[] = [];
     for (const [name, css] of sheets) for (const rule of css.matchAll(/(?<=^|[{}])\s*([^{}@]+?)\s*\{([^{}]*var\(--gold\)[^{}]*)\}/g)) gold.push(`${name}: ${rule[1]!.trim().replace(/\s+/g, " ")}`);
-    // The pool's number on the home page; the pool and an address's own part of it on the Rewards page.
-    expect(gold.sort()).toEqual(["styles/home.css: .figure-warm", "styles/rewards.css: .rewards-pool-total, .rewards-zec"]);
+    expect(gold).toEqual([]);
+    // The pattern finds a rule drawn in a colour when there is one.
+    expect([...".a { color: var(--gold); } .b { color: var(--text); }".matchAll(/(?<=^|[{}])\s*([^{}@]+?)\s*\{([^{}]*var\(--gold\)[^{}]*)\}/g)].map((rule) => rule[1])).toEqual([".a"]);
+    // The mark itself is the same gold, written out where the mark is set.
+    for (const vars of Object.values(THEMES)) expect(vars["--focus-ring"]).toBe(vars["--gold"]);
     // No button, link, heading or rule is gold: the main action is the ink.
     const controls = fs.readFileSync(path.join(stylesDir, "styles", "controls.css"), "utf8");
     expect(controls).not.toMatch(/var\(--gold\)/);

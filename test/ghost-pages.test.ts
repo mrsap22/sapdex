@@ -12,7 +12,6 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { routingOf, TERMS_VERSION, type OrderView } from "../shared/api.ts";
 import { DOC_SLUGS, docSlugs, GHOST_DOC_SLUG, isDocSlug } from "../shared/pages.ts";
-import type { RewardsPublic } from "../shared/rewards.ts";
 import { Faq, questions } from "../web/src/components/Faq.tsx";
 import { HomeSections } from "../web/src/components/Home.tsx";
 import { RecentHidden, RecentList } from "../web/src/components/RecentList.tsx";
@@ -22,14 +21,12 @@ import { features } from "../web/src/lib/site-logic.ts";
 import DocsPage from "../web/src/pages/DocsPage.tsx";
 import { PrivacyPage, TermsPage } from "../web/src/pages/LegalPages.tsx";
 import { OrderContent, OrderDeleted } from "../web/src/pages/OrderPage.tsx";
-import RewardsPage from "../web/src/pages/RewardsPage.tsx";
 import { StatsContent } from "../web/src/pages/StatsPage.tsx";
 import TrackPage from "../web/src/pages/TrackPage.tsx";
 import { matchRoute } from "../web/src/router.ts";
 import { useApp } from "../web/src/stores/app.ts";
 import { useGhost } from "../web/src/stores/ghost.ts";
 import { useOrders, type RecentOrder } from "../web/src/stores/orders.ts";
-import { useRewards } from "../web/src/stores/rewards.ts";
 import { NEVER } from "./words.ts";
 
 const root = path.resolve("web", "src");
@@ -65,7 +62,6 @@ interface Held {
   config?: object | null;
   /** What this browser's own list of orders holds. */
   orders?: RecentOrder[];
-  rewards?: Partial<ReturnType<typeof useRewards.getState>>;
 }
 
 /**
@@ -79,7 +75,6 @@ function draw(element: () => ReactElement, held: Held = {}): string {
     [useGhost, { on: held.ghost === true }],
     [useApp, { config: held.config === undefined ? SETTINGS : held.config }],
     [useOrders, { orders: held.orders ?? [] }],
-    [useRewards, { summary: null, summaryFailed: false, session: null, mine: null, step: "idle", error: null, ...held.rewards }],
   ];
   const before = wanted.map(([store, values]) => {
     const first = store.getInitialState() as Record<string, unknown>;
@@ -113,8 +108,6 @@ function element(markup: string, opening: string): string {
   }
   return "";
 }
-/** What is inside it. */
-const inside = (whole: string) => whole.replace(/^<[^>]+>/, "").replace(/<\/[a-z0-9]+>$/, "");
 
 /** What is hidden from everyone: a part drawn only to keep its room (see the order's page). */
 const UNSEEN = '<div class="order-ghost-state" data-unseen="true" aria-hidden="true" inert="">';
@@ -131,7 +124,6 @@ const plain = (markup: string) =>
     .replace(/\s+/g, " ")
     .trim();
 
-const rewardsPage = () => createElement(RewardsPage);
 const trackPage = () => createElement(TrackPage);
 const docsPage = (slug: Parameters<typeof DocsPage>[0]["slug"]) => () => createElement(DocsPage, { slug });
 const ghostDocs = docsPage(GHOST_DOC_SLUG);
@@ -141,7 +133,6 @@ const faq = () => createElement(Faq);
 const home = () => createElement(HomeSections);
 
 // ---- The sentences, word for word ----
-const SIGN_IN_OFF = "Sign-in is off in Ghost mode. Turn it off to see your points.";
 const ONLY_WAY_BACK = "This is the only way back to this order. It is not saved anywhere.";
 const DELETED_WHEN_IT_FINISHES = "Its record is deleted from this site's server the moment it is delivered or refunded.";
 const ALL_THAT_IS_LEFT = "This order has finished and its record has been deleted from the server. This page is all that is left of it; it will not load again.";
@@ -152,122 +143,6 @@ const OWN_LINK_ONLY = "An order made in Ghost mode opens from its own link only.
 const FAQ_ANSWER =
   "A switch in the header. While it is on, this site keeps nothing in your browser but the switch itself, and the record of an order you make is deleted from its server the moment the order is delivered or refunded. It does not make a swap less public: the deposit and the delivery are still public transfers, the swap service still carries out the swap, and your network and this site's host still see your network address. How Ghost mode works";
 const HOME_LINE = "One switch in the header. While it is on, the site keeps nothing in your browser but the switch itself, and deletes your order's record once it is delivered or refunded. Your deposit and your delivery are still public on-chain.";
-
-describe("the Rewards page in Ghost mode", () => {
-  const MONDAY = Date.parse("2026-10-05T00:00:00.000Z");
-  const week = { id: "2026-W41", start: new Date(MONDAY).toISOString(), end: new Date(MONDAY + 7 * 86_400_000).toISOString() };
-  // Made up from fixed text: it is nobody's.
-  const POOL = { address: "DZrFMBPK8J5Jf6KYNDrj4mo2QYAGgQaxsxyyCwQtAWjP", amount: (12_345_678n * 10n ** 4n).toString(), decimals: 8, usdMicro: "5925925440", readAt: new Date(MONDAY + 3_600_000).toISOString() };
-  const summary: RewardsPublic = { week, weekPointsMicro: "59805000000", weeks: [], totalPaid: "0", weeksPaid: 0, pool: POOL, serverNow: new Date(MONDAY + 3_600_000).toISOString() };
-  /** The part beside the week: the invitation to sign in, or what stands in its place. */
-  const mine = (markup: string) => inside(element(markup, '<div class="rewards-mine">'));
-
-  // The page counts the week down by the clock: both drawings are made at one moment, so that only the mode differs between them.
-  beforeEach(() => {
-    vi.useFakeTimers();
-    vi.setSystemTime(MONDAY + 2 * 86_400_000);
-  });
-  afterEach(() => vi.useRealTimers());
-
-  it("draws one line where the invitation to sign in stands, and nothing else of the sign-in", () => {
-    const markup = draw(rewardsPage, { ghost: true, rewards: { summary } });
-    expect(mine(markup)).toBe(`<p class="rewards-label mono">Your points</p><p class="rewards-ask">${SIGN_IN_OFF}</p>`);
-    // No control that opens a wallet or signs in, no sentence about signing, and no line kept for what a sign-in came to.
-    expect(mine(markup)).not.toMatch(/<button|rewards-message/);
-    expect(words(markup)).not.toMatch(/Connect|Sign in with|Sign in as|Signing in asks|Open your wallet|Confirm in your wallet|Choose a wallet|Sign out|Signed in as/);
-    // The one button left on the page copies the pool wallet's address.
-    expect([...markup.matchAll(/<button[^>]*>[\s\S]*?<\/button>/g)].map((button) => words(button[0]))).toEqual(["Copy the pool wallet's address"]);
-    // Not even where the page's store says that a choice of wallets is on show (it cannot, in the mode).
-    const choosing = draw(rewardsPage, { ghost: true, rewards: { summary, step: "choosing", wallets: ["Some wallet"] } });
-    expect(mine(choosing)).toBe(mine(markup));
-    expect(choosing).not.toContain("Some wallet");
-  });
-
-  it("out of the mode, draws the invitation as ever, and not that line", () => {
-    const markup = draw(rewardsPage, { rewards: { summary } });
-    expect(words(mine(markup))).toBe("Your points Signing in asks your Solana wallet to sign one plain message, to show that an address is yours. It is not a transaction: it moves nothing, approves nothing and costs no network fee. Sign in with a Solana wallet");
-    expect(mine(markup)).toMatch(/<button type="button" class="button-primary"[^>]*>Sign in with a Solana wallet<\/button>/);
-    // Where more than one wallet could sign in, they are offered by name.
-    const choosing = mine(draw(rewardsPage, { rewards: { summary, step: "choosing", wallets: ["Some wallet", "Another"] } }));
-    expect([...choosing.matchAll(/<button[^>]*>([^<]*)<\/button>/g)].map((button) => button[1])).toEqual(["Some wallet", "Another"]);
-    expect(words(markup)).not.toMatch(/Ghost mode/);
-  });
-
-  it("shows the week, its total, the pool and the rules the same in both: only the part beside the week differs", () => {
-    // (A link that leaves the site carries its small mark in the mode, and nothing else of it differs.)
-    const without = (markup: string) => markup.replace(mine(markup), "").replace(/ data-leaves="true"/g, "").replace(/<span class="leaves-site">.*?<\/span><\/span>/g, "");
-    const on = draw(rewardsPage, { ghost: true, rewards: { summary } });
-    const off = draw(rewardsPage, { rewards: { summary } });
-    expect(without(on)).toBe(without(off));
-    // The link to the wallet on the chain's own explorer leaves the site: in the mode it says so, and out of it it carries no mark.
-    expect(on).toMatch(/<a class="outbound" href="https:\/\/solscan\.io\/account\/DZrFMBPK8J5Jf6KYNDrj4mo2QYAGgQaxsxyyCwQtAWjP" target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer" data-leaves="true">View the wallet on Solscan.*?<span class="leaves-site">.*?\(leaves this site\)<\/span><\/span><\/a>/);
-    expect(off).not.toMatch(/leaves-site|data-leaves/);
-    for (const kept of ["This week 5d 00:00:00 Mon 5 Oct to Sun 11 Oct, UTC time.", "This week's points 59,805 points", "Current pool 1,234.56 ZEC", "The rules, in short", "The rules in full"]) expect(words(on), kept).toContain(kept);
-    // Before the server has answered, too: the frame is the same, so nothing moves between the modes as the page loads.
-    expect(without(draw(rewardsPage, { ghost: true }))).toBe(without(draw(rewardsPage)));
-  });
-
-  it("shows nobody's own points in the mode, even where a sign-in was made before it was turned on", () => {
-    const signedIn = {
-      summary,
-      session: { address: POOL.address, token: "t", expiresAt: MONDAY + 3 * 86_400_000 },
-      mine: { address: POOL.address, week: { ...week, pointsMicro: "250000000", carriedInMicro: "0" }, allTimeMicro: "250000000", swaps: [], payouts: [], share: { bps: 42, estimate: null, estimateCents: null, decimals: 8 } },
-    };
-    expect(words(draw(rewardsPage, { rewards: signedIn }))).toContain("Your points this week 250.00 All time: 250.00 Your share 0.42% Signed in as");
-    const on = draw(rewardsPage, { ghost: true, rewards: signedIn });
-    expect(words(mine(on))).toBe(`Your points ${SIGN_IN_OFF}`);
-    expect(words(on)).not.toMatch(/Your points this week|Your share|The swaps behind them|Signed in as|Sign out/);
-    // And the page ends that sign-in as soon as it is on screen.
-    expect(source("pages/RewardsPage.tsx")).toMatch(/useEffect\(\(\) => \{\s*if \(ghost\) signOut\(\);\s*\}, \[ghost, signOut\]\);/);
-    expect(source("pages/RewardsPage.tsx")).toContain("const mine = !ghost && rewards.session !== null ? rewards.mine : null;");
-  });
-
-  it("reaches for no wallet in the mode: the wallets a sign-in found are not so much as read, and nothing is asked of the sign-in", () => {
-    // Every look at the wallets on offer is counted, and each call that would speak to a wallet is stood in for by one that would be noticed.
-    const first = useRewards.getInitialState() as unknown as Record<string, unknown>;
-    const kept = Object.getOwnPropertyDescriptors(first);
-    let looks = 0;
-    const asked = vi.fn(() => Promise.resolve());
-    Object.defineProperty(first, "wallets", { configurable: true, enumerable: true, get: () => ((looks += 1), ["Some wallet"]) });
-    Object.assign(first, { signIn: asked, choose: asked });
-    try {
-      draw(rewardsPage, { ghost: true, rewards: { summary, step: "choosing" } });
-      draw(rewardsPage, { ghost: true, rewards: { step: "choosing" } });
-      draw(rewardsPage, { ghost: true });
-      expect(looks).toBe(0);
-      // The same drawing out of the mode does look: the check above is one that can fail.
-      expect(draw(rewardsPage, { rewards: { summary, step: "choosing" } })).toContain("Some wallet");
-      expect(looks).toBeGreaterThan(0);
-      // Drawing the page asks nothing of a wallet in either: only a press does, out of the mode.
-      expect(asked).not.toHaveBeenCalled();
-    } finally {
-      Object.defineProperties(first, kept);
-    }
-  });
-
-  it("by its own code: only the part that is not drawn in the mode signs in or offers a wallet", () => {
-    const page = shown("pages/RewardsPage.tsx");
-    // One part or the other, decided at the first drawing.
-    expect(page).toContain("const ghost = useGhost((state) => state.on);");
-    expect(page).toContain("{ghost ? <SignInOff /> : <Mine mine={mine} />}");
-    // The sign-in is asked for in one place, inside that part; so is the choice among wallets, and the list of them.
-    const invitation = part(page, "function Mine(");
-    for (const call of ["rewards.signIn(", "rewards.choose(", "rewards.wallets"]) {
-      expect(page.split(call).length - 1, call).toBe(1);
-      expect(invitation, call).toContain(call);
-    }
-    // What stands in its place is words alone.
-    const line = part(page, "function SignInOff(");
-    expect(line).not.toMatch(/use[A-Z]\w*\(|<button|Button|onClick|wallet|rewards\./);
-    expect(line).toContain(SIGN_IN_OFF);
-    // And what the page itself does when it opens asks this site's own server for the week, and nothing of a wallet.
-    const whole = part(page, "export default function RewardsPage()");
-    expect(whole).not.toMatch(/\.signIn\(|\.choose\(|\.wallets\b|findWallets|signMessage/);
-    // The page fetches no code of its own later, and does not name the code that speaks to a wallet: only its store does, behind the mode.
-    expect(page).not.toMatch(/\bimport\(/);
-    expect(source("pages/RewardsPage.tsx")).not.toMatch(/solana\/sign-in|sign-in-logic/);
-  });
-});
 
 // ---- An order's page ----
 // Example addresses, made up from fixed text: they are nobody's.
@@ -300,7 +175,6 @@ function order(overrides: Partial<OrderView> = {}): OrderView {
     refundFee: null,
     recipient: SOL_ADDRESS,
     refundTo: EVM_ADDRESS,
-    rewardsAddress: null,
     routing: routingOf("public"),
     depositAddress: DEPOSIT_ADDRESS,
     depositMemo: null,
@@ -515,7 +389,7 @@ describe("an order made in Ghost mode, on its own page", () => {
     it("writes nothing to the browser in the mode: its own list is left as it is", () => {
       expect(code).toContain("if (!ghostOn()) useOrders.getState().forget(id);");
       // Nothing on the page, or in the parts of it that are this page's own, touches the browser's storage itself.
-      for (const file of ["pages/OrderPage.tsx", "pages/TrackPage.tsx", "pages/RewardsPage.tsx", "pages/DocsPage.tsx", "pages/LegalPages.tsx", "components/RecentList.tsx", "components/Faq.tsx", "components/Home.tsx", "lib/order-logic.ts"]) {
+      for (const file of ["pages/OrderPage.tsx", "pages/TrackPage.tsx", "pages/DocsPage.tsx", "pages/LegalPages.tsx", "components/RecentList.tsx", "components/Faq.tsx", "components/Home.tsx", "lib/order-logic.ts"]) {
         expect(shown(file), file).not.toMatch(/localStorage|sessionStorage|indexedDB|document\.cookie/);
       }
       // The only other store of this page's that writes is used by one call each.
@@ -591,8 +465,8 @@ describe("the Docs' page on Ghost mode", () => {
       expect(docSlugs(privateRouting), String(privateRouting)).toContain("ghost-mode");
       expect(docExists(GHOST_DOC_SLUG, privateRouting)).toBe(true);
       const pages = docPages(privateRouting).map((page) => page.href);
-      // (Where swaps are routed privately the page on Add gas, which exists only there, stands between it and the page on points.)
-      expect(pages.indexOf("/docs/ghost-mode")).toBe(pages.indexOf("/docs/rewards") - (privateRouting ? 2 : 1));
+      // (Where swaps are routed privately the page on Add gas, which exists only there, stands between it and the questions.)
+      expect(pages.indexOf("/docs/ghost-mode")).toBe(pages.indexOf("/docs/faq") - (privateRouting ? 2 : 1));
       expect(pages.indexOf("/docs/ghost-mode")).toBeGreaterThan(pages.indexOf("/docs/safety"));
     }
     expect(DOC_SLUGS.indexOf("ghost-mode")).toBe(DOC_SLUGS.indexOf("private") + 1);
@@ -603,7 +477,7 @@ describe("the Docs' page on Ghost mode", () => {
     expect(markup).toContain('<a href="/docs/ghost-mode" class="docs-page-link" aria-current="page">Ghost mode</a>');
     for (const other of [docsPage(null), docsPage("fees"), docsPage("faq"), privacy, terms]) expect(draw(other)).toContain('<a href="/docs/ghost-mode" class="docs-page-link">Ghost mode</a>');
     expect(markup).toMatch(/<a href="\/docs\/safety" class="docs-turn-link" data-way="previous">/);
-    expect(markup).toMatch(/<a href="\/docs\/rewards" class="docs-turn-link" data-way="next">/);
+    expect(markup).toMatch(/<a href="\/docs\/faq" class="docs-turn-link" data-way="next">/);
     expect(draw(ghostDocs, { config: ROUTED_PRIVATELY })).toMatch(/<a href="\/docs\/private" class="docs-turn-link" data-way="previous">/);
   });
 
@@ -627,7 +501,7 @@ describe("the Docs' page on Ghost mode", () => {
       // The switch: remembered for the tab only, and gone with the tab.
       "The switch is the one thing remembered. It is kept as a single on/off flag for this tab, so that loading the page again does not turn Ghost mode off. It ends when the tab is closed.",
       // Nothing kept in the browser; earlier orders come back unless they were cleared.
-      'Nothing is kept in your browser. No list of your orders, no copy of the coin list, no note of any kind: only the switch itself. Orders you made earlier, in normal mode, are not shown while Ghost mode is on. They are there again when you turn it off, unless you chose "Also clear what this browser already holds" when you turned it on. The Rewards sign-in is off while the mode is on: its code is not fetched at all.',
+      'Nothing is kept in your browser. No list of your orders, no copy of the coin list, no note of any kind: only the switch itself. Orders you made earlier, in normal mode, are not shown while Ghost mode is on. They are there again when you turn it off, unless you chose "Also clear what this browser already holds" when you turned it on.',
       // What is so with the switch on or off is said as that, after the three: no wallet to pay, and nothing asked of any other address.
       "Two things are so in any mode, with the switch on or off, and so are no change. No wallet is connected to pay: you pay by sending to the order's deposit address, from any wallet. And the page asks nothing of any address but this site's own, and tells your browser to refuse anything else. A link that leaves the site still works as a plain link: it opens in a new tab, carries a small mark that says it leaves this site, and does not tell the other site where you came from.",
       // On the server: deleted the moment it finishes; its own link only; never by its deposit address.
@@ -662,7 +536,6 @@ describe("the Docs' page on Ghost mode", () => {
       "Once an order made in Ghost mode has finished, this is all the server still holds of it.",
       "A one-way fingerprint of the order's ID, with one word for how it ended, for 30 days. It is there so that the order's link can say that the order finished, and how, where it would otherwise say that there is no such order. The ID itself is not kept.",
       "Its place in the totals. The Stats page counts it in its totals: the swaps, the volume, the chains and the coins. It has no row among the recent swaps, and its deposit transaction is never listed.",
-      "Its points, if you named a rewards address. They are counted before the record is deleted, and kept as any points are: a one-way fingerprint of the order's ID, the rewards address, the swap's value in US dollars, its two coins and their chains, and the time. Leave the rewards address empty and the swap adds no points, and none of this is kept.",
       "Lines in the logs. The server's logs name an order by a one-way fingerprint only, and are kept as for any order. For an order made in Ghost mode they carry no address and no transaction hash.",
       "Three kinds of order are kept longer, because coins may still be in them. An order that fails is kept for 30 days, as any order is, and deleted then. So is one that ran out after a transaction was named for it that could not be confirmed. An order that was sent too small a deposit is kept until that deposit has been refunded.",
       // What follows from the deletion for a payment that comes too late.
@@ -709,7 +582,7 @@ describe("the Docs' page on Ghost mode", () => {
 
 describe("the Privacy Policy on Ghost mode", () => {
   const GHOST_PARAGRAPH = (rows: string) =>
-    `Ghost mode. An order made in Ghost mode is marked as one. While it runs, the server keeps it as it keeps any order. The moment it is delivered or refunded its record is deleted; one that was never paid is deleted a day after its deadline, once the server has stopped looking for a late deposit; one that fails, or that ran out after a transaction was named for it that could not be confirmed, is kept for 30 days, as any order is, because coins may still be in it. After the deletion the server still holds three things of it: a one-way fingerprint of the order's ID, with one word for how it ended, for 30 days, so that the order's link can say that the order finished and how; its place in the running totals, ${rows}; and, if the order has a rewards address, its points, which are written down before the record is deleted and kept as set out under Points. The logs name it by a one-way fingerprint, as they name any order, and hold neither an address nor a transaction hash of it. It is never found from its deposit address. Ghost mode changes nothing else on this page: the access log and your network address are treated as for any visit, the host keeps its own record of each request, the swap service receives what it does for any swap and keeps its own records, and every transfer is public on its blockchain.`;
+    `Ghost mode. An order made in Ghost mode is marked as one. While it runs, the server keeps it as it keeps any order. The moment it is delivered or refunded its record is deleted; one that was never paid is deleted a day after its deadline, once the server has stopped looking for a late deposit; one that fails, or that ran out after a transaction was named for it that could not be confirmed, is kept for 30 days, as any order is, because coins may still be in it. After the deletion the server still holds two things of it: a one-way fingerprint of the order's ID, with one word for how it ended, for 30 days, so that the order's link can say that the order finished and how; and its place in the running totals, ${rows}. The logs name it by a one-way fingerprint, as they name any order, and hold neither an address nor a transaction hash of it. It is never found from its deposit address. Ghost mode changes nothing else on this page: the access log and your network address are treated as for any visit, the host keeps its own record of each request, the swap service receives what it does for any swap and keeps its own records, and every transfer is public on its blockchain.`;
   const section = (markup: string, id: string) => new RegExp(`<h2 id="${id}"[\\s\\S]*?(?=<h2 id="|<nav class="docs-turn")`).exec(markup)?.[0] ?? "";
 
   it("has one paragraph on it, among what is kept on the server, with a link to the page that explains it", () => {
@@ -719,7 +592,7 @@ describe("the Privacy Policy on Ghost mode", () => {
       expect(words(server)).toContain(GHOST_PARAGRAPH("with no row among the Stats page's recent swaps and no listing of its deposit transaction"));
       expect(server).toContain('<strong>Ghost mode.</strong> An order made in <a href="/docs/ghost-mode">Ghost mode</a> is marked as one.');
       // The last of that section's list, after everything it refers to. (Where swaps are routed privately the list has one item more, on Add gas, before it.)
-      expect(server.match(/<li>/g)).toHaveLength(config === ROUTED_PRIVATELY ? 11 : 10);
+      expect(server.match(/<li>/g)).toHaveLength(config === ROUTED_PRIVATELY ? 9 : 8);
       expect(server.lastIndexOf("<li>")).toBe(server.indexOf("<li><strong>Ghost mode.</strong>"));
       expect(markup.match(/<strong>Ghost mode\.<\/strong>/g)).toHaveLength(1);
     }
@@ -743,9 +616,9 @@ describe("the Privacy Policy on Ghost mode", () => {
     const markup = draw(privacy);
     const browser = section(markup, "what-is-kept-in-your-browser");
     const items = [...browser.matchAll(/<li>([\s\S]*?)<\/li>/g)].map((item) => words(item[1]!));
-    expect(items).toHaveLength(5);
+    expect(items).toHaveLength(4);
     expect(items.at(-1)).toBe(
-      "While Ghost mode is on, none of the above is written. One thing is kept: a flag for this tab that says the mode is on, so that loading the page again does not turn it off. It ends when the tab is closed. The list of orders you made earlier is not shown while the mode is on, and is still there when you turn it off, unless you chose to clear what this browser already holds. The Rewards sign-in is off, and its code is not loaded.",
+      "While Ghost mode is on, none of the above is written. One thing is kept: a flag for this tab that says the mode is on, so that loading the page again does not turn it off. It ends when the tab is closed. The list of orders you made earlier is not shown while the mode is on, and is still there when you turn it off, unless you chose to clear what this browser already holds.",
     );
   });
 
@@ -786,8 +659,8 @@ describe("the home page's line for Ghost mode", () => {
     for (const [tokenSet, privateRouting] of [[false, false], [true, false], [false, true], [true, true]] as const) {
       const item = features(tokenSet, privateRouting).find((feature) => feature.key === "ghost");
       expect(item).toEqual({ key: "ghost", title: "Ghost mode", text: HOME_LINE, link: { href: "/docs/ghost-mode", label: "How Ghost mode works" } });
-      // After points, and before the token where there is one. (Where swaps are routed privately, Add gas follows it.)
-      expect(features(tokenSet, privateRouting).map((feature) => feature.key)).toEqual(["swaps", "tracking", "rewards", "ghost", ...(privateRouting ? ["gas"] : []), ...(tokenSet ? ["token"] : [])]);
+      // After order tracking, and before the token where there is one. (Where swaps are routed privately, Add gas follows it.)
+      expect(features(tokenSet, privateRouting).map((feature) => feature.key)).toEqual(["swaps", "tracking", "ghost", ...(privateRouting ? ["gas"] : []), ...(tokenSet ? ["token"] : [])]);
     }
     // No longer than the longest of the others, and it ends on the first thing the mode does not do.
     const others = features(true, true).filter((feature) => feature.key !== "ghost");
@@ -850,7 +723,6 @@ describe("what the site says of Ghost mode, taken together", () => {
         out.push([`the questions (${where})`, words(draw(faq, held))]);
         out.push([`the home page (${where})`, words(draw(home, held))]);
         out.push([`Track order (${where})`, words(draw(trackPage, held))]);
-        out.push([`Rewards (${where})`, words(draw(rewardsPage, held))]);
         out.push([`an order waiting (${where})`, words(draw(content(order({ ghost: true })), held))]);
         out.push([`an order delivered and deleted (${where})`, words(draw(content(delivered({ ghost: true }), true), held))]);
         out.push([`an order deleted unseen (${where})`, words(draw(content(swapping({ ghost: true }), true), held))]);
@@ -860,13 +732,13 @@ describe("what the site says of Ghost mode, taken together", () => {
     return out;
   };
   /** The sentences that are the feature's own, wherever they are drawn. */
-  const OWN = [SIGN_IN_OFF, ONLY_WAY_BACK, DELETED_WHEN_IT_FINISHES, ALL_THAT_IS_LEFT, ENDING_NOT_SEEN, NOTICE, LIST_NOT_SHOWN, OWN_LINK_ONLY, FAQ_ANSWER, HOME_LINE];
+  const OWN = [ONLY_WAY_BACK, DELETED_WHEN_IT_FINISHES, ALL_THAT_IS_LEFT, ENDING_NOT_SEEN, NOTICE, LIST_NOT_SHOWN, OWN_LINK_ONLY, FAQ_ANSWER, HOME_LINE];
   /** The same sentences that say what private routing is not, as the wording test allows them: they are no word about Ghost mode. */
   const allowed = (text: string) => text.replace(/Private routing is not anonymity/g, "").replace(/no route guarantees it/gi, "");
 
   it("uses none of the words the site never uses, on any page, in or out of the mode", () => {
     const all = texts();
-    expect(all).toHaveLength(66);
+    expect(all).toHaveLength(60);
     for (const [where, text] of all) {
       expect(text.length, where).toBeGreaterThan(30);
       expect(NEVER.test(allowed(text)), where).toBe(false);
@@ -909,7 +781,7 @@ describe("what the site says of Ghost mode, taken together", () => {
       expect(named.filter((name) => name !== "Ghost mode"), where).toEqual([]);
     }
     // In the files themselves, outside the names the code gives things, the word stands only in "Ghost mode".
-    const files = ["pages/RewardsPage.tsx", "pages/OrderPage.tsx", "pages/TrackPage.tsx", "pages/DocsPage.tsx", "pages/LegalPages.tsx", "components/Faq.tsx", "components/RecentList.tsx", "components/Home.tsx", "lib/site-logic.ts"];
+    const files = ["pages/OrderPage.tsx", "pages/TrackPage.tsx", "pages/DocsPage.tsx", "pages/LegalPages.tsx", "components/Faq.tsx", "components/RecentList.tsx", "components/Home.tsx", "lib/site-logic.ts"];
     const CODE = /useGhost|ghostOn|ghostLookAgain|ghostTab|GhostNote|GhostMode|GhostArt|GHOST_DOC_SLUG|order-ghost[\w-]*|stores\/ghost\.ts|\/docs\/ghost-mode|"ghost-mode"|"ghost"|<Ghost\b|\bGhost,|\bghost\b(?! mode)/g;
     for (const file of files) expect(shown(file).replace(CODE, "").match(/ghost(?! mode)|(?<!\bGhost) mode\b.{0}ghost|GHOST|Ghost Mode|ghost mode/gi)?.filter((name) => name !== "Ghost") ?? [], file).toEqual([]);
     // It is a different thing from private routing, and is never called private.
@@ -932,13 +804,10 @@ describe("what the site says of Ghost mode, taken together", () => {
       }
       expect(docs).toContain("only the switch itself");
       expect(policy).toContain("One thing is kept: a flag for this tab that says the mode is on");
-      // What the server still holds: the fingerprint for 30 days, the totals, the points of an order that named an address.
+      // What the server still holds: the fingerprint for 30 days, and the totals.
       for (const text of [docs, policy]) {
         expect(text).toMatch(/one-way fingerprint of the order's ID, with one word for how it ended, for 30 days/i);
-        // An order that named a rewards address has more kept of it, for as long as points are kept, and both say so.
-        expect(text).toMatch(/if (?:you named|the order has) a rewards address/i);
         expect(text).toMatch(/place in the (?:running )?totals/);
-        expect(text).toMatch(/its points/i);
         expect(text).toMatch(/fails(?:, or that ran out after a transaction was named for it that could not be confirmed,)? is kept for 30 days, as any order is/);
         expect(text).toContain("never found from its deposit address");
         expect(text).not.toMatch(/\b(?:14|7|60|90) days\b[^.]*fingerprint|fingerprint[^.]*\b(?:14|7|60|90) days\b/);

@@ -141,18 +141,6 @@ export const LIMITS = {
   /** Orders per receiving address. */
   orderPerRecipient: { max: 10, windowMs: HOUR },
   orderRead: { max: 90, windowMs: MINUTE },
-  /**
-   * Asking for a sign-in code on the Rewards page: per IP, per wider network (IPv6 /48) and for
-   * everyone together. A person asks once. The middle one keeps a single network, which can speak
-   * from thousands of addresses, from using up what everyone shares.
-   */
-  rewardsNonce: { max: 10, windowMs: MINUTE },
-  rewardsNonceWide: { max: 40, windowMs: MINUTE },
-  rewardsNonceGlobal: { max: 600, windowMs: MINUTE },
-  /** Signing in on the Rewards page, per IP. Each attempt costs a signature check. */
-  rewardsSignIn: { max: 10, windowMs: MINUTE },
-  /** Reading one's own points, per IP. The page asks once on sign-in and again now and then. */
-  rewardsRead: { max: 60, windowMs: MINUTE },
   /** Lookups of order IDs that do not exist, per IP. */
   orderMiss: { max: 10, windowMs: MINUTE },
   /**
@@ -174,7 +162,7 @@ export const LIMITS = {
   /** The one question a page may ask of a chain (is this address a contract), per network address and for everyone together. */
   rpc: { max: 60, windowMs: MINUTE },
   rpcGlobal: { max: 1000, windowMs: MINUTE },
-  /** The small reads a page asks for as it opens (settings, status, the pool, the coin's facts), per IP. One opening asks about six, and one address can be a whole office. */
+  /** The small reads a page asks for as it opens (settings, status, the coin list, the site's totals), per IP. One opening asks a few, and one address can be a whole office. */
   light: { max: 120, windowMs: MINUTE },
 } as const satisfies Record<string, Limit>;
 

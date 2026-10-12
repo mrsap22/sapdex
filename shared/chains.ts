@@ -79,7 +79,7 @@ const list: ChainInfo[] = [
 
 export const CHAINS: ReadonlyMap<string, ChainInfo> = new Map(list.map((c) => [c.key, c]));
 
-/** Chains where Core supports paying from a connected wallet. One code path. */
+/** The four chains whose deposits this site checks on the chain itself. One code path. */
 export const WALLET_CHAINS = ["bsc", "eth", "base", "arb"] as const;
 export type WalletChain = (typeof WALLET_CHAINS)[number];
 

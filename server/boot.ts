@@ -14,9 +14,7 @@ import { idleBudget, type OneClick } from "./oneclick.ts";
 import { createPoller } from "./poller.ts";
 import { buildProvider } from "./provider.ts";
 import { configuredLimits, createLimiters, type Limiters } from "./ratelimit.ts";
-import { createRewards, createSignIn } from "./rewards.ts";
 import { createRpc } from "./rpc.ts";
-import { createSapling, type Sapling } from "./sapling.ts";
 import { holdsSampleContent, seedSamples, withSampleSettings } from "./sample.ts";
 import { createSanctions, type SanctionsService } from "./sanctions.ts";
 import { createSessionIssuer } from "./session.ts";
@@ -105,28 +103,26 @@ export function boot(options: {
   // Local development never creates a real order: see server/provider.ts.
   const { oneclick, liveOrders, stub } = buildProvider({ config, log, now, ...net, onErrorRate: (rate, calls) => void providerErrorAlert(alerts, rate, calls) });
   if (stub !== null) log.warn("practice_provider_on");
-  // A data folder that a practice server has filled holds made-up orders, points and paid weeks.
+  // A data folder that a practice server has filled holds made-up orders and site totals.
   // The live site never starts on one: it would show them as its own record. On a developer's own
   // machine it is only said in the log, so that trying practice mode once does not lock the folder.
   if (stub === null && holdsSampleContent(config.dataDir)) {
-    if (config.env === "production") throw new ConfigError("DATA_DIR: this folder holds practice content (it has a file rewards/SAMPLE-CONTENT). The live site does not start on it. Give this server a data folder of its own.");
+    if (config.env === "production") throw new ConfigError("DATA_DIR: this folder holds practice content (it has a file SAMPLE-CONTENT). The live site does not start on it. Give this server a data folder of its own.");
     log.warn("practice_content_in_data_folder");
   }
 
   const rpc = createRpc({ urls: config.rpcUrls, ...net });
   const tokens = createTokenService({ oneclick, rpc, alerts, log, dataDir: config.dataDir, excludedChains: config.excludedChains, now });
-  // The record of points and the site's own totals, for the Rewards and the Stats pages. Each time an
-  // order's state is saved, both are asked whether the order now adds anything (a delivered order
-  // does, once: its own record is marked as counted before the totals are touched, and its points
-  // are a file of their own). The totals are kept whether or not the Stats page is switched on, so
-  // that they are whole when it is. After the two, and never before, the record of an order made in
-  // Ghost mode is deleted if the order is delivered or refunded: see server/settle.ts.
-  const rewards = createRewards(config.dataDir);
+  // The site's own totals, for the Stats page. Each time an order's state is saved, they are asked
+  // whether the order now adds anything (a delivered order does, once: its own record is marked as
+  // counted before the totals are touched). The totals are kept whether or not the Stats page is
+  // switched on, so that they are whole when it is. After that, and never before, the record of an
+  // order made in Ghost mode is deleted if the order is delivered or refunded: see server/settle.ts.
   const stats = createStats(config.dataDir, { now, receivedMin: config.statsReceivedMin });
   if (stats.setAside) log.error("stats_file_unreadable");
   const store: OrderStore = createOrderStore(config.dataDir, { now, onState: (record) => void settler.settle(record) });
-  const settler = createSettler({ store, stats, rewards, log });
-  // At start every stored order is put to the same three steps once more, so that a delivery saved a
+  const settler = createSettler({ store, stats, log });
+  // At start every stored order is put to the same two steps once more, so that a delivery saved a
   // moment before a restart is not missed, and a Ghost order that had ended is not left on disk.
   // One order that cannot be put to them does not stop the server starting: it is logged, and the
   // rest are still gone through. The totals are added up in memory, and written once after the last.
@@ -155,10 +151,10 @@ export function boot(options: {
     geo = createStaticGeo();
   }
 
-  // Practice mode only: sample content, and a sample token and reserve where the operator has set none,
+  // Practice mode only: sample content, and a sample token where the operator has set none,
   // so that every screen can be looked at full. None of this runs on the live site: `stub` is only
   // ever there in local development (see server/provider.ts and the settings' own refusal).
-  const samples = stub === null ? null : seedSamples({ practice: true, dataDir: config.dataDir, store, rewards, stats, now: now() });
+  const samples = stub === null ? null : seedSamples({ practice: true, dataDir: config.dataDir, store, stats, now: now() });
   const shown = stub === null ? config : withSampleSettings(config);
 
   const site = loadStaticSite(options.siteDir ?? path.resolve("web", "dist"), {
@@ -167,22 +163,11 @@ export function boot(options: {
     // How this server routes swaps, as the page is told it by /api/config: the site's first words follow it.
     privateRouting: shown.privacyMode === "basic",
     statsPage: config.statsPage,
-    // The wallet the Rewards page shows the pool of, where there is one: the page draws its frame from the first paint.
-    rewardsWallet: shown.reserveAddress,
     siteUrl: config.siteUrl,
     // What this server will show in its banner for as long as it runs. Known now, so written into the page.
     banner: config.swapsPaused ? (["paused"] as const) : [],
   });
   if (site === null && production) log.warn("site_not_built");
-
-  // The coin's facts are read from Sapling where a coin is set. A practice server's made-up coin is
-  // not on Sapling: it is given Sapling's split as it was read on 11 Oct 2026, so that its page can be seen full.
-  const sapling: Sapling | null =
-    shown.tokenAddress === null
-      ? null
-      : stub !== null && config.tokenAddress === null
-        ? { facts: async () => ({ fee: { totalBps: 200, liquidityBps: 50, burnBps: 50, saplingBps: 20, planterBps: 80 }, feedsPool: true }) }
-        : createSapling({ mint: shown.tokenAddress, poolWallet: shown.reserveAddress, now, ...net });
 
   const app = createApp({
     config: shown,
@@ -198,10 +183,7 @@ export function boot(options: {
     rpc,
     limiters,
     sessions: createSessionIssuer(),
-    rewards,
-    signIn: createSignIn(),
     stats,
-    sapling,
     site,
     now,
     liveOrders,

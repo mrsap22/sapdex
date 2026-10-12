@@ -8,10 +8,9 @@ import { firstWords } from "../server/static.ts";
 /** The start of every sample page: the first words of the site in the form the server may rewrite them, as the real page holds them. */
 const FIRST = `<!doctype html>${firstWords("public").map((place) => place.html).join("")}`;
 
-/** What the sign-in's wallet code is known by in a build: the event of the wallets' shared standard that it sends. */
-const SIGN_IN_CODE = 'window.dispatchEvent(new CustomEvent("wallet-standard:app-ready",{detail:api}))';
-const ONE_SIGN_IN = (files: number) => `the sign-in's wallet code is in ${files} files of the build (it must be in exactly one, fetched only when "Sign in" is pressed)`;
-const IN_FIRST_LOAD = (file: string) => `${file}: the sign-in's wallet code is part of the first page load (it must load only when "Sign in" is pressed on the Rewards page)`;
+/** What code that listens for wallets is known by in a build: the event of the wallets' shared standard that it sends. No build may hold it. */
+const WALLET_LISTENER = 'window.dispatchEvent(new CustomEvent("wallet-standard:app-ready",{detail:api}))';
+const WALLET_CODE = "code that speaks to a wallet (the site never speaks to one: it asks none to connect, to sign or to send)";
 
 let dist = "";
 beforeEach(() => {
@@ -20,8 +19,8 @@ beforeEach(() => {
   fs.writeFileSync(path.join(dist, "index.html"), FIRST + '<script type="module" src="/assets/app-1.js"></script><link rel="stylesheet" href="/assets/app-1.css">');
   fs.writeFileSync(path.join(dist, "assets", "app-1.js"), 'console.log("hello")');
   fs.writeFileSync(path.join(dist, "assets", "app-1.css"), "body{margin:0}");
-  // The one file that speaks to a wallet: the Rewards page's sign-in, fetched only when it is pressed. Every build has it, once.
-  fs.writeFileSync(path.join(dist, "assets", "sign-in-1.js"), SIGN_IN_CODE);
+  // A file the first page load does not fetch: a page of its own, fetched when it is opened.
+  fs.writeFileSync(path.join(dist, "assets", "later-1.js"), 'console.log("later")');
 });
 afterEach(() => fs.rmSync(dist, { recursive: true, force: true }));
 
@@ -60,7 +59,7 @@ describe("build check", () => {
 
   it("fails when the value of a server-only variable is in the output", () => {
     add("leak.js", 'fetch("https://rpc.example/v2/abcdef123456")');
-    for (const name of ["ONECLICK_API_KEY", "ALERT_WEBHOOK_URL", "BSC_RPC_URL", "ETH_RPC_URL", "BASE_RPC_URL", "ARBITRUM_RPC_URL", "SOLANA_RPC_URL", "FEE_RECIPIENT"]) {
+    for (const name of ["ONECLICK_API_KEY", "ALERT_WEBHOOK_URL", "BSC_RPC_URL", "ETH_RPC_URL", "BASE_RPC_URL", "ARBITRUM_RPC_URL", "FEE_RECIPIENT"]) {
       expect(problems({ [name]: "https://rpc.example/v2/abcdef123456" }), name).toEqual(["assets/leak.js: contains the value of a server-only variable"]);
     }
     // A value that is public by design, such as the site's own address, is not a leak.
@@ -68,7 +67,6 @@ describe("build check", () => {
   });
 
   const NO_LIBRARY = "a wallet-connect library (the site has none: an order is paid by sending to its deposit address)";
-  const TRANSACTION = "a request for a wallet to sign or send a transaction (the site asks a wallet for one thing only: to sign the sign-in's plain message)";
   const leaks: Array<[string, string, string]> = [
     ["a signed token", `const t="eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJwYXJ0bmVyIn0.c2lnbmF0dXJlLXZhbHVl"`, "a signed token"],
     ["a private key", "-----BEGIN EC PRIVATE KEY-----\nabc\n-----END EC PRIVATE KEY-----", "a private key"],
@@ -82,17 +80,19 @@ describe("build check", () => {
     ["a wallet-connect relay", 'new WebSocket("wss://relay.walletconnect.org")', NO_LIBRARY],
     ["a wallet window's own parts", 'customElements.define("w3m-modal",M)', NO_LIBRARY],
     ["a wallet library by name", 'import{createConfig}from"wagmi"', NO_LIBRARY],
-    ["Sapling's service", 'fetch("https://api.sapling.cash/v1/params")', "Sapling's service (only the server asks it; the page asks this site alone)"],
+    ["Sapling's service", 'fetch("https://api.sapling.cash/v1/params")', "Sapling's service (nothing of this site asks it; the page asks this site alone)"],
     ["a Solana node", 'fetch("https://api.mainnet-beta.solana.com")', "a chain's node (only the server reads a chain; the page asks this site alone)"],
     ["a node of another chain", 'const node="https://mainnet.base.org"', "a chain's node (only the server reads a chain; the page asks this site alone)"],
-    ["a request to sign a transaction", 'wallet.features["solana:signTransaction"].signTransaction(t)', TRANSACTION],
-    ["a request to sign and send a transaction", "await provider.signAndSendTransaction(tx)", TRANSACTION],
-    ["a request to send a transaction", 'request({method:"eth_sendTransaction"})', TRANSACTION],
+    ["code that listens for wallets", WALLET_LISTENER, WALLET_CODE],
+    ["a request to connect a wallet", 'wallet.features["standard:connect"].connect()', WALLET_CODE],
+    ["a request to sign a message", 'await wallet.features["solana:signMessage"].signMessage({account,message})', WALLET_CODE],
+    ["a request to sign a message, by another name", 'request({method:"personal_sign",params:[m,a]})', WALLET_CODE],
+    ["a request for a wallet's accounts", 'request({method:"eth_requestAccounts"})', WALLET_CODE],
+    ["a look for a wallet in the page", "if(window.ethereum){}", WALLET_CODE],
+    ["a request to sign a transaction", 'wallet.features["solana:signTransaction"].signTransaction(t)', WALLET_CODE],
+    ["a request to sign and send a transaction", "await provider.signAndSendTransaction(tx)", WALLET_CODE],
+    ["a request to send a transaction", 'request({method:"eth_sendTransaction"})', WALLET_CODE],
   ];
-  it("lets the words of the sign-in through: a wallet's own name for a refusal is not a library", () => {
-    add("rewards-1.js", "/^(UserRejectedRequestError|WalletSignMessageError|WalletConnectionError)$/.test(e.name)");
-    expect(problems()).toEqual([]);
-  });
   it.each(leaks)("fails when the output contains %s", (_label, content, what) => {
     add("leak.js", content);
     expect(problems()).toEqual([`assets/leak.js: contains ${what}`]);
@@ -185,33 +185,33 @@ describe("build check", () => {
     expect(problems().sort()).toEqual([path.join("assets", "near-mark-1.png"), path.join("brand", "near.webp"), path.join("chains", "near-protocol.svg"), path.join("coins", "wnear.webp")].map((file) => `${file}: ${only}`));
   });
 
-  it("fails when the sign-in's wallet code is part of the first page load, and not when it is in a file fetched later", () => {
+  it("fails on wallet code in any file of the build: in the first page load, in a file fetched later, in one or in several", () => {
     expect(problems()).toEqual([]);
-    fs.rmSync(path.join(dist, "assets", "sign-in-1.js"));
-    fs.writeFileSync(path.join(dist, "assets", "app-1.js"), SIGN_IN_CODE);
-    expect(problems()).toEqual([IN_FIRST_LOAD("assets/app-1.js")]);
+    // In a file that is fetched only when asked for.
+    add("later-1.js", WALLET_LISTENER);
+    expect(problems()).toEqual([`assets/later-1.js: contains ${WALLET_CODE}`]);
+    // In the first page load as well: each file is named.
+    add("app-1.js", `console.log(1);${WALLET_LISTENER}`);
+    expect(problems().sort()).toEqual([`assets/app-1.js: contains ${WALLET_CODE}`, `assets/later-1.js: contains ${WALLET_CODE}`]);
+    // And in a file nothing names at all.
+    add("app-1.js", 'console.log("hello")');
+    add("later-1.js", 'console.log("later")');
+    add("loose-9.js", WALLET_LISTENER);
+    expect(problems()).toEqual([`assets/loose-9.js: contains ${WALLET_CODE}`]);
   });
 
-  it("fails when the sign-in's wallet code is in no file of the build, or in more than one", () => {
-    fs.rmSync(path.join(dist, "assets", "sign-in-1.js"));
-    expect(problems()).toEqual([ONE_SIGN_IN(0)]);
-    add("sign-in-1.js", SIGN_IN_CODE);
-    add("rewards-2.js", `console.log(1);${SIGN_IN_CODE}`);
-    expect(problems()).toEqual([ONE_SIGN_IN(2)]);
-  });
-
-  it("fails when a file of the first page load fetches, at once, a file the page does not name: wallet code could reach the first load that way unread", () => {
+  it("fails when a file of the first page load fetches, at once, a file the page does not name: code could reach the first load that way unread", () => {
     // Fetched only when asked: no part of the first load.
-    fs.writeFileSync(path.join(dist, "assets", "app-1.js"), 'const open=()=>import("./sign-in-1.js");console.log(open)');
+    fs.writeFileSync(path.join(dist, "assets", "app-1.js"), 'const open=()=>import("./later-1.js");console.log(open)');
     expect(problems()).toEqual([]);
     // Fetched at once, by a file the page names, and not itself named by the page.
-    for (const line of ['import{a}from"./sign-in-1.js";console.log(a)', 'import"./sign-in-1.js";', 'console.log(1);export{a}from"./sign-in-1.js";', "import * as w from './sign-in-1.js';\nconsole.log(w)"]) {
+    for (const line of ['import{a}from"./later-1.js";console.log(a)', 'import"./later-1.js";', 'console.log(1);export{a}from"./later-1.js";', "import * as w from './later-1.js';\nconsole.log(w)"]) {
       fs.writeFileSync(path.join(dist, "assets", "app-1.js"), line);
-      expect(problems(), line).toEqual(["assets/app-1.js: fetches assets/sign-in-1.js at once, which the page does not name (the first page load must be only what the page names)"]);
+      expect(problems(), line).toEqual(["assets/app-1.js: fetches assets/later-1.js at once, which the page does not name (the first page load must be only what the page names)"]);
     }
-    // Named by the page, it is read like any first file: and it is the wallet code.
-    fs.writeFileSync(path.join(dist, "index.html"), FIRST + '<script type="module" src="/assets/app-1.js"></script><link rel="modulepreload" href="/assets/sign-in-1.js"><link rel="stylesheet" href="/assets/app-1.css">');
-    expect(problems()).toEqual([IN_FIRST_LOAD("assets/sign-in-1.js")]);
+    // Named by the page, it is part of the first load, and counted in it.
+    fs.writeFileSync(path.join(dist, "index.html"), FIRST + '<script type="module" src="/assets/app-1.js"></script><link rel="modulepreload" href="/assets/later-1.js"><link rel="stylesheet" href="/assets/app-1.css">');
+    expect(problems()).toEqual([]);
   });
 
   it("tells a file fetched at once from one fetched when asked", () => {

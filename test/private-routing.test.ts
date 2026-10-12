@@ -72,7 +72,6 @@ function order(overrides: Partial<OrderView> = {}): OrderView {
     refundFee: null,
     recipient: SOL_ADDRESS,
     refundTo: EVM_ADDRESS,
-    rewardsAddress: null,
     depositAddress: null,
     depositMemo: null,
     depositsOpen: false,
@@ -140,30 +139,21 @@ describe("the quote's breakdown", () => {
   const panel = (quote: QuoteView, mode: Confidentiality | null, byChoice = false) => draw(createElement(QuotePanel, { quote, from: ETH, to: USDT, loading: false, stale: false, held: true, startOpen: true, routing: routingNote(mode, quote, byChoice), impactConfirmed: false, onConfirmImpact: () => undefined }));
   const rows = (html: string) => [...html.matchAll(/<div class="quote-row"[^>]*><dt class="muted">([^<]*)<\/dt>/g)].map((match) => match[1]);
 
-  it("a private quote: the routing first, then no fee of SaplingDex's, the provider's in figures and the points, as on any quote", () => {
+  it("a private quote: the routing first, then no fee of SaplingDex's and the provider's in figures, as on any quote", () => {
     const html = panel(PRIVATE_QUOTE, "basic");
-    expect(rows(html)).toEqual(["Routing", "Minimum received", "SaplingDex fee", "Provider fee", "Solana network fee", "Estimated time", "Points"]);
+    expect(rows(html)).toEqual(["Routing", "Minimum received", "SaplingDex fee", "Provider fee", "Solana network fee", "Estimated time"]);
     expect(html).toMatch(/<div class="quote-row" data-row="routing"><dt class="muted">Routing<\/dt><dd>Private<\/dd><\/div>/);
     expect(html).toMatch(/<dt class="muted">SaplingDex fee<\/dt><dd><span class="muted">None<\/span><\/dd>/);
     expect(read(html)).not.toMatch(/0\.00%/);
     expect(read(html)).toMatch(/Provider fee 0\.20%/);
-    // $1,265.13 paid: 12,651.3 points, ten to the dollar. They are a public quote's for the same amount.
-    expect(read(html)).toMatch(/Points \+12,651\.3 /);
-    const pointsOf = (drawn: string) => /<div class="quote-row"[^>]*><dt class="muted">Points<\/dt>[\s\S]*?<\/div>/.exec(drawn)?.[0] ?? "";
-    expect(pointsOf(html)).not.toBe("");
-    expect(pointsOf(html)).toBe(pointsOf(panel(PUBLIC_QUOTE, "basic", true)));
   });
 
-  it("a private quote from a server set to take a fee: the fee row gives it in figures, and the points are the same", () => {
+  it("a private quote from a server set to take a fee: the fee row gives it in figures", () => {
     const html = panel(FEE_QUOTE, "basic");
-    expect(rows(html)).toEqual(["Routing", "Minimum received", "SaplingDex fee", "Provider fee", "Solana network fee", "Estimated time", "Points"]);
+    expect(rows(html)).toEqual(["Routing", "Minimum received", "SaplingDex fee", "Provider fee", "Solana network fee", "Estimated time"]);
     expect(read(html)).toMatch(/SaplingDex fee 0\.20%/);
     expect(read(html)).toMatch(/Provider fee 0\.20%/);
     expect(read(html)).not.toMatch(/None/);
-    // No fee is part of the sum: the points are those of the same swap with no fee.
-    const pointsOf = (drawn: string) => /<div class="quote-row"[^>]*><dt class="muted">Points<\/dt>[\s\S]*?<\/div>/.exec(drawn)?.[0] ?? "";
-    expect(pointsOf(html)).not.toBe("");
-    expect(pointsOf(html)).toBe(pointsOf(panel(PRIVATE_QUOTE, "basic")));
   });
 
   it("the line itself shows nothing new: the rate, the time and the chevron", () => {
@@ -172,9 +162,9 @@ describe("the quote's breakdown", () => {
     expect(read(line(panel(PUBLIC_QUOTE, "basic", true)))).not.toMatch(NEW_WORDS);
   });
 
-  it("a public quote by the person's own choice: the routing row says so, and the fee and the points are as ever", () => {
+  it("a public quote by the person's own choice: the routing row says so, and the fee is as ever", () => {
     const html = panel(PUBLIC_QUOTE, "basic", true);
-    expect(rows(html)).toEqual(["Routing", "Minimum received", "SaplingDex fee", "Provider fee", "Solana network fee", "Estimated time", "Points"]);
+    expect(rows(html)).toEqual(["Routing", "Minimum received", "SaplingDex fee", "Provider fee", "Solana network fee", "Estimated time"]);
     expect(html).toMatch(/data-row="routing"><dt class="muted">Routing<\/dt><dd>Public, by your choice<\/dd>/);
     expect(read(html)).toMatch(/SaplingDex fee None Provider fee 0\.20%/);
   });
@@ -182,7 +172,7 @@ describe("the quote's breakdown", () => {
   it("where the server routes in public: no row, no new word, and markup the same as before there was such a thing", () => {
     for (const mode of ["public", null] as const) {
       const html = panel(PUBLIC_QUOTE, mode);
-      expect(rows(html)).toEqual(["Minimum received", "SaplingDex fee", "Provider fee", "Solana network fee", "Estimated time", "Points"]);
+      expect(rows(html)).toEqual(["Minimum received", "SaplingDex fee", "Provider fee", "Solana network fee", "Estimated time"]);
       expect(read(html), String(mode)).not.toMatch(NEW_WORDS);
       expect(html).not.toMatch(/data-row|routing-tag/);
       // The same as a quote from before routing was named, drawn with no word about routing at all.
@@ -241,20 +231,12 @@ describe("the swap card", () => {
     expect(tools(html)).not.toContain("routing-switch");
   });
 
-  it("a private quote on the card: one line for the quote, and nothing said of points, as for a public one", () => {
-    const pointsOn = (drawn: string) => read(drawn).match(/[+\d.,]* ?points/gi) ?? [];
+  it("a private quote on the card: one line for the quote, with one small label on it, the time", () => {
     serverRoutes("basic");
-    held = { quote: PUBLIC_QUOTE, withoutPrivate: true };
-    // A swap adds points only if a rewards address is given in the review, so the card promises none: not in the quote's line, not in its breakdown.
-    expect(pointsOn(card())).toEqual([]);
     held = { quote: PRIVATE_QUOTE };
     const html = card();
-    expect(pointsOn(html)).toEqual([]);
-    expect(html).not.toContain('data-tone="points"');
+    expect(html.match(/<span class="chip"/g)).toHaveLength(1);
     expect(html).toMatch(/data-row="routing"><dt class="muted">Routing<\/dt><dd>Private<\/dd>/);
-    // A quote with a fee of SaplingDex's on it says the same: nothing.
-    held = { quote: FEE_QUOTE };
-    expect(pointsOn(card())).toEqual([]);
   });
 });
 
@@ -262,9 +244,10 @@ describe("the review sheet", () => {
   const sheet = () => draw(createElement(ReviewSheet));
   const rows = (html: string) => [...html.matchAll(/<div class="review-row"[^>]*><dt class="muted">([^<]*)<\/dt>/g)].map((match) => match[1]);
   const sentence = (html: string) => read(/<p class="review-sentence"[^>]*>([\s\S]*?)<\/p>/.exec(html)?.[1] ?? "");
-  const points = (html: string) => read(/<p class="review-address-label">Points[\s\S]*?(?=<p class="review-plain)/.exec(html)?.[0] ?? "");
+  /** The addresses the review shows, by their labels: the two of the swap, and no third. */
+  const addresses = (html: string) => [...html.matchAll(/<p class="review-address-label">([^<]*)</g)].map((match) => match[1]);
 
-  it("a private swap: the third short sentence, the routing row with the tag near the top, no fee of SaplingDex's, and somewhere for the points to go", () => {
+  it("a private swap: the third short sentence, the routing row with the tag near the top, no fee of SaplingDex's, and the swap's two addresses", () => {
     serverRoutes("basic");
     held = { quote: PRIVATE_QUOTE };
     const html = sheet();
@@ -273,22 +256,17 @@ describe("the review sheet", () => {
     expect(html).toMatch(/<div class="review-row" data-row="routing"><dt class="muted">Routing<\/dt><dd><span class="chip routing-tag" data-tone="private">Private<\/span><\/dd><\/div>/);
     expect(html).toMatch(/<dt class="muted">SaplingDex fee<\/dt><dd><span class="muted">None<\/span><\/dd>/);
     expect(read(html)).toMatch(/Provider fee 0\.001 ETH 0\.20%/);
-    // A swap with no fee of SaplingDex's has somewhere for its points to go, like any other.
-    // They go to a Solana address typed here, or nowhere: the field is empty, and says what leaving it so means.
-    expect(points(html)).toMatch(/^Points · Solana Rewards address Optional\. Without one, this swap adds no points\./);
-    expect(html).toContain("Rewards address");
-    expect(read(html)).not.toMatch(/adds no points: SaplingDex/);
+    // The review asks for no address: it shows the two the card was given, and has no field of its own.
+    expect(addresses(html)).toEqual(["Receiving address", "Refund address"]);
+    expect(html).not.toMatch(/<input(?![^>]*type="checkbox")/);
   });
 
-  it("a private swap the server takes a fee on: the fee row gives it in figures, and the place for the points is the same", () => {
+  it("a private swap the server takes a fee on: the fee row gives it in figures", () => {
     serverRoutes("basic");
     held = { quote: FEE_QUOTE };
     const html = sheet();
     expect(read(html)).toMatch(/SaplingDex fee 0\.001 ETH 0\.20%/);
-    expect(points(html)).toMatch(/^Points · Solana /);
-    expect(html).toContain("Rewards address");
-    held = { quote: PRIVATE_QUOTE };
-    expect(points(html)).toBe(points(sheet()));
+    expect(addresses(html)).toEqual(["Receiving address", "Refund address"]);
   });
 
   it("public by the person's own choice: the routing row says so in words, with no tag, and the rest is as ever", () => {
@@ -299,8 +277,7 @@ describe("the review sheet", () => {
     expect(html).toMatch(/<div class="review-row" data-row="routing"><dt class="muted">Routing<\/dt><dd>Public, by your choice<\/dd><\/div>/);
     expect(html).not.toContain("routing-tag");
     expect(read(html)).toMatch(/SaplingDex fee None/);
-    expect(points(html)).toMatch(/^Points · Solana /);
-    expect(html).toContain("Rewards address");
+    expect(addresses(html)).toEqual(["Receiving address", "Refund address"]);
   });
 
   it("where the server routes in public: no routing row, no third sentence, no new word", () => {
@@ -312,7 +289,7 @@ describe("the review sheet", () => {
       expect(rows(html).slice(0, 3)).toEqual(["You send", "You receive, about", "Minimum received"]);
       expect(html).not.toMatch(/routing-tag|data-row/);
       expect(read(html), String(mode)).not.toMatch(NEW_WORDS);
-      expect(points(html)).toMatch(/^Points · Solana /);
+      expect(addresses(html)).toEqual(["Receiving address", "Refund address"]);
     }
   });
 
@@ -346,14 +323,11 @@ describe("an order's page", () => {
       expect(head(html), String(mode)).toBe('<div class="order-title-row"><h1 id="order-title" class="order-title">0.5 ETH to USDT</h1><span class="chip routing-tag" data-tone="private">Private</span></div>');
       expect(rows(html).slice(0, 4)).toEqual(["You send", "You receive, about", "Routing", "Minimum received"]);
       expect(html).toMatch(/<div class="review-row" data-row="routing"><dt class="muted">Routing<\/dt><dd>Private<\/dd><\/div>/);
-      // Its fee row and its points read as any order's do: no fee of SaplingDex's, and points that turn on its rewards address alone.
+      // Its fee row reads as any order's does: no fee of SaplingDex's.
       expect(html).toMatch(/<dt class="muted">SaplingDex fee<\/dt><dd><span class="muted">None<\/span><\/dd>/);
-      expect(read(html)).toContain("This swap adds no points: it was made without a rewards address.");
-      expect(read(page({ ...privateOrder, rewardsAddress: SOL_ADDRESS }, mode))).toContain("This swap's points go to this address when it is delivered.");
-      // One made where the server took a fee gives it in figures, and says the same of its points.
-      const paid = page({ ...privateOrder, fees: FEE_QUOTE.fees, rewardsAddress: SOL_ADDRESS }, mode);
+      // One made where the server took a fee gives it in figures.
+      const paid = page({ ...privateOrder, fees: FEE_QUOTE.fees }, mode);
       expect(read(paid)).toMatch(/SaplingDex fee 0\.001 ETH 0\.20%/);
-      expect(read(paid)).toContain("This swap's points go to this address when it is delivered.");
       expect(read(html)).not.toMatch(/SaplingDex takes no fee on it/);
     }
   });
@@ -374,7 +348,6 @@ describe("an order's page", () => {
       expect(rows(html)).toEqual(["You send", "You receive, about", "Minimum received", "SaplingDex fee", "Provider fee"]);
       expect(html).not.toMatch(/routing-tag|data-row|order-title-row/);
       expect(read(html)).not.toMatch(NEW_WORDS);
-      expect(read(html)).toContain("This swap adds no points: it was made without a rewards address.");
     }
     // Four drawings of the same order, one markup.
     expect(new Set(drawn).size).toBe(1);
@@ -401,13 +374,12 @@ describe("the page of component states", () => {
     // The message and the button for "not available".
     expect(group).toContain(`<p class="card-message" role="status">${PRIVATE_UNAVAILABLE}</p>`);
     expect(group).toMatch(/<button type="button" class="button-primary">Swap without private routing<\/button>/);
-    // The review: its first words, its routing row both ways, and its words on points.
+    // The review: its first words, and its routing row both ways.
     expect(read(group)).toContain("You send 0.5 ETH on Base. You receive about 1,260.07 USDT on Solana. Routed privately.");
     expect(group).toMatch(/<div class="review-row" data-row="routing"><dt class="muted">Routing<\/dt><dd><span class="chip routing-tag" data-tone="private">Private<\/span><\/dd><\/div>/);
     expect(group).toMatch(/<div class="review-row" data-row="routing"><dt class="muted">Routing<\/dt><dd>Public, by your choice<\/dd><\/div>/);
     // And a quote from a server set to take a fee: the row then gives it in figures.
     expect(read(group)).toMatch(/SaplingDex fee 0\.20%/);
-    expect(read(html)).not.toMatch(/adds no points: SaplingDex/);
     // The review's own button and line when an order could not be made privately, and the two orders.
     expect(html).toMatch(/<button type="button" class="button-primary">Close<\/button>/);
     expect(read(html)).toContain(`${PRIVATE_UNAVAILABLE} No order was made.`);

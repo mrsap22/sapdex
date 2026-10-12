@@ -9,7 +9,6 @@ import { HEADLINE_SUB, headlineWords, POSITIONING, shareImageAlt } from "../shar
 import { Faq, questions } from "../web/src/components/Faq.tsx";
 import { Headline, HomeSections } from "../web/src/components/Home.tsx";
 import { features, PRIVATE_MEANS } from "../web/src/lib/site-logic.ts";
-import { RULES_IN_SHORT } from "../web/src/lib/rewards-logic.ts";
 import DocsPage from "../web/src/pages/DocsPage.tsx";
 import { PrivacyPage, TermsPage } from "../web/src/pages/LegalPages.tsx";
 import TrackPage from "../web/src/pages/TrackPage.tsx";
@@ -22,7 +21,7 @@ import { NEVER } from "./words.ts";
 const root = path.resolve("web", "src");
 const sources = (dir: string): string[] => fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => (entry.isDirectory() ? sources(path.join(dir, entry.name)) : /\.(tsx?|html)$/.test(entry.name) ? [path.join(dir, entry.name)] : []));
 /** The files whose words can reach a visitor: every script and page of the site, the page it is served in, and the words the server shares with it. */
-const FILES = [...sources(root), path.resolve("web", "index.html"), path.resolve("shared", "banner.ts"), path.resolve("shared", "rewards.ts"), path.resolve("shared", "positioning.ts")]
+const FILES = [...sources(root), path.resolve("web", "index.html"), path.resolve("shared", "banner.ts"), path.resolve("shared", "positioning.ts")]
   // The page of component states is a tool for looking at parts of the site while building it. The live site answers its address with "not found".
   .filter((file) => !file.endsWith(path.join("pages", "StatesPage.tsx")));
 const name = (file: string) => path.relative(path.resolve("."), file).split(path.sep).join("/");
@@ -53,7 +52,7 @@ describe("nothing on the site says that something is not ready", () => {
 
   it("finds the files", () => {
     expect(FILES.length).toBeGreaterThan(50);
-    expect(FILES.map(name)).toContain("web/src/pages/RewardsPage.tsx");
+    expect(FILES.map(name)).toContain("web/src/pages/DocsPage.tsx");
     expect(FILES.map(name)).toContain("web/src/pages/LegalPages.tsx");
     expect(FILES.map(name)).toContain("web/index.html");
   });
@@ -66,8 +65,8 @@ describe("nothing on the site says that something is not ready", () => {
   });
 
   it("is a check that can fail", () => {
-    for (const sentence of ["Coming soon.", "The token does not exist yet.", "Draft, pending legal review.", "Rewards: Planned", "The rewards record starts when $SAPDEX launches.", "This page is not ready yet.", "[PLACEHOLDER: the governing law]"]) expect(NOT_YET.test(sentence), sentence).toBe(true);
-    for (const sentence of ['placeholder="Solana address"', "<AddressFieldPlaceholder label=", "Sent. Waiting for it to be confirmed.", "Points and weekly rewards"]) expect(NOT_YET.test(sentence), sentence).toBe(false);
+    for (const sentence of ["Coming soon.", "The token does not exist yet.", "Draft, pending legal review.", "Stats: Planned", "The record starts when $SAPDEX launches.", "This page is not ready yet.", "[PLACEHOLDER: the governing law]"]) expect(NOT_YET.test(sentence), sentence).toBe(true);
+    for (const sentence of ['placeholder="Solana address"', "<AddressFieldPlaceholder label=", "Sent. Waiting for it to be confirmed.", "Order tracking and automatic refunds"]) expect(NOT_YET.test(sentence), sentence).toBe(false);
   });
 
   it("lists what the site does without a tag of Live or of anything else", () => {
@@ -135,60 +134,25 @@ describe("practice mode is not shown as a feature of the site", () => {
   });
 });
 
-describe("what is said of points", () => {
-  const POINTS_FILES = ["pages/RewardsPage.tsx", "lib/rewards-logic.ts", "pages/DocsPage.tsx", "components/Faq.tsx", "pages/LegalPages.tsx", "lib/site-logic.ts", "components/Stage.tsx", "components/Home.tsx", "components/ReviewSheet.tsx", "pages/OrderPage.tsx"].map((file) => path.join(root, file));
+describe("nothing on the site promises money", () => {
+  const WORDS_FILES = ["pages/DocsPage.tsx", "components/Faq.tsx", "pages/LegalPages.tsx", "lib/site-logic.ts", "components/Stage.tsx", "components/Home.tsx", "components/ReviewSheet.tsx", "components/QuotePanel.tsx", "pages/OrderPage.tsx", "pages/StatsPage.tsx"].map((file) => path.join(root, file));
 
-  it("uses the words points, weekly rewards and payout, and never a word that promises money", () => {
-    // Nor a word that would make the coin rewards are paid in, or anyone behind it, a party to the site.
+  it("never a word that promises a gain, and none that would make anyone a party to the site", () => {
     const banned = /\b(earn(s|ed|ing)?|yield(s)?|returns|APR|APY|passive|profit(s)?|income|interest|invest(ment|ing)?|guarantee[sd]?|dividend(s)?|airdrop(s)?|free money|risk-free|partner(s|ed|ship)?|sponsor(s|ed|ship)?|backed by)\b/i;
-    const hits = [...POINTS_FILES, path.resolve("shared", "rewards.ts")].flatMap((file) =>
+    const hits = WORDS_FILES.flatMap((file) =>
       shown(file)
         // (A scroll listener's own setting is code, not a word on the page.)
         .replace(/\{ passive: true \}/g, "")
         // (Two of these files say what private routing is not: "no route guarantees it". That is said of
-        // confidentiality, to deny a promise. It is no word about points; any other use is still caught.)
+        // confidentiality, to deny a promise; any other use is still caught.)
         .replace(NO_PROMISE, "")
         .split("\n")
         .flatMap((line, index) => (banned.test(line) ? [`${name(file)}:${index + 1}: ${line.trim().slice(0, 60)}`] : [])),
     );
-    // "an investment" is named once, in the Terms, to say that points are not one.
-    expect(hits.filter((hit) => !/Points are a record and nothing more/.test(hit))).toEqual([]);
-    expect(banned.test("Private routing guarantees your points.".replace(NO_PROMISE, ""))).toBe(true);
+    expect(hits).toEqual([]);
+    expect(banned.test("Private routing guarantees your delivery.".replace(NO_PROMISE, ""))).toBe(true);
     expect(banned.test("Private routing is not anonymity and no route guarantees it.".replace(NO_PROMISE, ""))).toBe(false);
-  });
-
-  it("names ZEC on Solana as what rewards are paid in, wherever the payout coin is named, and no other coin or chain", () => {
-    for (const [label, page] of [["Docs, rewards", docs("rewards")], ["the questions", faq], ["the Terms", terms], ["the Privacy Policy", privacy]] as const) {
-      const text = wordsOf(drawnWith(SETTINGS, page));
-      expect(text, label).toContain("ZEC on Solana");
-      // Nothing of where the first payouts of another site were sent: no NEAR as a reward, no BNB Chain as its home.
-      expect(text, label).not.toMatch(/NEAR on BNB Chain|in NEAR\b|Binance-Peg|BscScan|DexScreener/);
-    }
-    expect(wordsOf(drawnWith(SETTINGS, docs("rewards")))).toContain("Rewards are paid in ZEC on Solana, to your rewards address: the Solana address you sign in with on the Rewards page.");
-    expect(RULES_IN_SHORT.join(" ")).toContain("It is sent by hand, in ZEC on Solana.");
-    // The smallest payout, and what happens to a share below it, are said where the rules are.
-    expect(RULES_IN_SHORT.join(" ")).toContain("The smallest payout that is sent is 0.001 ZEC. A smaller share is not lost: its points are carried into the next week.");
-    expect(wordsOf(drawnWith(SETTINGS, docs("rewards")))).toContain("The smallest payout that is sent is 0.001 ZEC.");
-    // The words in the files behind those pages, and the rules shared with the server, name no other coin or chain for it either.
-    for (const file of ["pages/RewardsPage.tsx", "lib/rewards-logic.ts"].map((name) => path.join(root, name)).concat(path.resolve("shared", "rewards.ts"))) expect(shown(file), name(file)).not.toMatch(/BNB Chain|Binance|BscScan|\bNEAR\b(?! Intents|'s Omni)/);
-    // The coin is what rewards are paid in, and nothing more is said of it: nobody is made a party to the site.
-    for (const sentence of ["NEAR is our partner.", "Rewards sponsored by Sapling.", "A pool backed by Zcash."]) expect(/\b(partner(s|ed|ship)?|sponsor(s|ed|ship)?|backed by)\b/i.test(sentence), sentence).toBe(true);
-  });
-
-  it("says, wherever a payout is described, that it is not owed and can change", () => {
-    expect(RULES_IN_SHORT.join(" ")).toMatch(/Points have no money value\. A payout is at SaplingDex's discretion and can change or stop\./);
-    expect(shown(path.join(root, "pages", "DocsPage.tsx"))).toMatch(/at SaplingDex's discretion and can change or stop/);
-    expect(shown(path.join(root, "pages", "LegalPages.tsx"))).toMatch(/A payout is not owed\./);
-    expect(shown(path.join(root, "components", "Faq.tsx"))).toMatch(/a payout is at SaplingDex's discretion and can change/);
-    expect(features(false).find((item) => item.key === "rewards")?.text).toMatch(/at SaplingDex's discretion and can change/);
-  });
-
-  it("explains the one signature before the wallet opens, on the Rewards page", () => {
-    const page = shown(path.join(root, "pages", "RewardsPage.tsx"));
-    expect(page).toContain("Signing in asks your Solana wallet to sign one plain message, to show that an address is yours. It is not a transaction: it moves nothing, approves nothing and costs no network fee.");
-    // The sentence comes before the button that opens the wallet, and before the choice of wallets.
-    expect(page.indexOf("Signing in asks your Solana wallet to sign one plain message")).toBeLessThan(page.indexOf("rewards.signIn("));
-    expect(page.indexOf("Signing in asks your Solana wallet to sign one plain message")).toBeLessThan(page.indexOf("rewards.choose("));
+    for (const sentence of ["NEAR is our partner.", "Swaps sponsored by Sapling.", "A site backed by Zcash.", "Earn as you swap.", "A 5% APR."]) expect(banned.test(sentence), sentence).toBe(true);
   });
 });
 
@@ -320,7 +284,7 @@ const PAGES: (readonly [string, () => ReactElement])[] = [["the headline", headl
 const PRIVATE_PAGE = ["Docs, private", docs(PRIVATE_DOC_SLUG)] as const;
 
 /** The questions asked everywhere, in order. The one on Ghost mode follows the one on who can see a swap. */
-const QUESTIONS = ["what-is-saplingdex", "cost", "time", "wallet", "failed", "wrong-amount", "exchange", "public", "ghost-mode", "points", "signature", "find-order", "help"];
+const QUESTIONS = ["what-is-saplingdex", "cost", "time", "wallet", "failed", "wrong-amount", "exchange", "public", "ghost-mode", "find-order", "help"];
 
 describe("private wording is shown only where swaps are routed privately", () => {
   // The rule: what the site says follows what the server
@@ -414,8 +378,8 @@ describe("private wording is shown only where swaps are routed privately", () =>
       expect(wordsOf(drawnWith(config, docs("safety")))).toContain("Keep the order's link. It is the way back to the order, and anyone who has it can see the order. What SaplingDex never does");
       expect(wordsOf(drawnWith(config, privacy))).toContain("Swaps themselves are public. Every transfer is recorded on its blockchain, where anyone can see the addresses and the amounts. SaplingDex cannot change that.");
       const sections = [...drawnWith(config, terms).matchAll(/<h2 id="[^"]+" data-title="([^"]+)"/g)].map((match) => match[1]);
-      expect(sections).toHaveLength(13);
-      expect(sections.at(-1)).toBe("13. Changes and contact");
+      expect(sections).toHaveLength(12);
+      expect(sections.at(-1)).toBe("12. Changes and contact");
     });
   });
 
@@ -454,11 +418,9 @@ describe("private wording is shown only where swaps are routed privately", () =>
         // A swap made without private routing is an ordinary public one, and the answer says so.
         expect(text).toContain("A swap made without private routing is an ordinary public swap: its deposit and its delivery can be matched to each other.");
         expect(text).not.toContain("Yes. Every transfer is recorded on its blockchain");
-        // What a private swap costs and what it adds: the same fees shown the same way, and points as for any swap.
+        // What a private swap costs: the same fees shown the same way.
         expect(text).toContain("SaplingDex takes no fee. The only fee is the provider's 0.20%.");
         expect(text).toContain("A privately routed swap shows the same fees, each on its own line.");
-        expect(text).toContain("A privately routed swap adds points the same way.");
-        expect(text).not.toMatch(/adds none|adds no points/);
       }
       expect(wordsOf(drawnWith(config, faq)).indexOf("What is private routing?")).toBeLessThan(wordsOf(drawnWith(config, faq)).indexOf("Can other people see my swap?"));
     });
@@ -493,9 +455,8 @@ describe("private wording is shown only where swaps are routed privately", () =>
         "Amounts and timing can give hints.",
         "Private routing is not a mixer. There is no pool of other people's coins that yours are mixed with, and no waiting for a crowd.",
         "Only the link between them is kept out of public records.",
-        // What it costs, and that it adds points as any swap does.
+        // What it costs.
         "SaplingDex takes no fee. The only fee is the provider's 0.20%. A privately routed swap costs what any swap does, and its quote shows it before you confirm",
-        "Such a swap adds points as any other does: they are counted from its value in US dollars.",
         // When it cannot be had: the choice is the person's, and a swap made without it is an ordinary public one.
         'the card says so and offers "Swap without private routing". That is an ordinary public swap: its deposit and its delivery can be matched to each other in public records.',
         "Nothing is switched without your choosing it.",
@@ -515,9 +476,8 @@ describe("private wording is shown only where swaps are routed privately", () =>
       expect(safety).toContain("Your deposit and your delivery are public on-chain: anyone can see those two transfers on the chains involved. With private routing the link between them is not in public records. Private routing is not anonymity.");
       expect(safety).not.toContain("Swaps are public on-chain.");
       expect(safety).toContain("On a privately routed swap the order's page shows both ends of it: share the link only with someone you would show both to.");
-      expect(wordsOf(drawnWith(config, docs("rewards")))).toContain("A privately routed swap adds points the same way. They are counted from its value in US dollars, as for any swap.");
-      // Nothing drawn on a private site says any longer that a private swap pays SaplingDex no fee or adds no points.
-      for (const page of [faq, docs(null), docs("fees"), docs("rewards"), docs("private"), docs("safety")]) expect(wordsOf(drawnWith(config, page))).not.toMatch(/takes no fee of its own|privately routed swap adds no(ne| points)|pays SaplingDex no fee/);
+      // Nothing drawn on a private site says that a private swap pays SaplingDex no fee of its own: no swap pays one.
+      for (const page of [faq, docs(null), docs("fees"), docs("private"), docs("safety")]) expect(wordsOf(drawnWith(config, page))).not.toMatch(/takes no fee of its own|pays SaplingDex no fee/);
       // Two pages have nothing to say of it, and say nothing of their own: the one mention on them is the name
       // of the page on private routing, in the list of the documentation's pages that every page carries.
       for (const slug of ["chains", "refunds"] as const) {
@@ -530,10 +490,10 @@ describe("private wording is shown only where swaps are routed privately", () =>
     it("the Terms have a section on it, and the Privacy Policy says what it changes about what is public", () => {
       const markup = drawnWith(config, terms);
       const sections = [...markup.matchAll(/<h2 id="([^"]+)" data-title="([^"]+)"/g)].map((match) => `${match[1]}: ${match[2]}`);
-      expect(sections).toHaveLength(14);
-      expect(sections.at(-1)).toBe("private-routing: 14. Private routing");
-      // The thirteen before it are the ones there have always been, with the same numbers.
-      expect(sections.slice(0, 13)).toEqual([...drawnWith(SETTINGS, terms).matchAll(/<h2 id="([^"]+)" data-title="([^"]+)"/g)].map((match) => `${match[1]}: ${match[2]}`));
+      expect(sections).toHaveLength(13);
+      expect(sections.at(-1)).toBe("private-routing: 13. Private routing");
+      // The twelve before it are the ones there have always been, with the same numbers.
+      expect(sections.slice(0, 12)).toEqual([...drawnWith(SETTINGS, terms).matchAll(/<h2 id="([^"]+)" data-title="([^"]+)"/g)].map((match) => `${match[1]}: ${match[2]}`));
       const text = wordsOf(markup);
       for (const sentence of [
         "Private routing is not anonymity.",

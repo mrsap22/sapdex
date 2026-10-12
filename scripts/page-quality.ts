@@ -11,7 +11,7 @@
 // do not fail it: a red mark there must mean a defect. The accessibility rules and the layout
 // shift give the same answer every time, and fail the run everywhere.
 //
-// The pages: the home page, Track order, Docs, Rewards, Terms and Privacy; the Stats page and the
+// The pages: the home page, Track order, Docs, Terms and Privacy; the Stats page and the
 // token's page, where the site has them; and an order's page, the one a person pays on, where an
 // order can be made up (a site in practice mode). What was left out is printed.
 //
@@ -56,7 +56,7 @@ const throttled = (cpuSlowdownMultiplier: number) => ({ rttMs: 150, throughputKb
  */
 const LATEST_PAINT_MS = 3_500;
 /** The pages that are always there. The token's page and an order's page are added below when the site has them. */
-const PAGES = ["/", "/track", "/docs", "/rewards", "/terms", "/privacy"];
+const PAGES = ["/", "/track", "/docs", "/terms", "/privacy"];
 /** Made up from fixed text, so it is nobody's: the pretend order's refund address. (The coin's page needs no address from here: a practice server has a sample coin.) */
 const MADE_UP = "0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB";
 const DEBUG_PORT = 9337;

@@ -665,17 +665,11 @@
   white-space: nowrap;
 }
 
-/* The small labels run from the right, the time first. One row of them is on show; where the line
-   has no room for both, the points go to a second row, which is out of sight. Nothing is ever cut in
-   half, and the rate and the time are never the ones to give way. */
+/* The small label beside the rate: how long the swap takes. */
 .quote-chips {
   grid-area: chips;
   align-self: start;
   display: flex;
-  flex-direction: row-reverse;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: var(--space-4);
   height: var(--height-24);
   min-width: 0;
   overflow: hidden;
@@ -691,7 +685,7 @@
   transform: rotate(180deg);
 }
 
-/* A small label that only tells: how long, how many points. */
+/* A small label that only tells: how long. */
 .chip {
   display: inline-flex;
   align-items: center;
@@ -704,11 +698,6 @@
   line-height: var(--line-12);
   font-weight: var(--weight-500);
   white-space: nowrap;
-}
-
-.chip[data-tone="points"] {
-  background: var(--tint-accent);
-  color: var(--accent);
 }
 
 .chip[data-tone="warning"] {

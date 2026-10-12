@@ -31,7 +31,6 @@ import { pickerWalk } from "./picker-walk.ts";
 import { privateWalk } from "./private-walk.ts";
 import { ghostWalk } from "./ghost-walk.ts";
 import { gasWalk } from "./gas-walk.ts";
-import { rewardsWalk } from "./rewards-walk.ts";
 
 const WIDTHS = [360, 768, 1280] as const;
 const THEMES = ["dark", "light"] as const;
@@ -480,10 +479,6 @@ const SCENARIOS: Scenario[] = [
       const links = await page.locator(".token-facts a[href]").evaluateAll((all) => all.map((link) => link.getAttribute("href")));
       if (JSON.stringify(links) !== JSON.stringify([`https://solscan.io/token/${mint}`, `https://sapling.cash/coin/${mint}`])) throw new Error(`the coin's links lead to ${JSON.stringify(links)}`);
       if ((await page.getByRole("link", { name: /View on Solscan/ }).count()) !== 1) throw new Error('the coin\'s address has no "View on Solscan"');
-      // How trades feed the pool: a paragraph that arrives from the site's own server a moment after the page.
-      const words = page.locator(".token-pool .token-words").first();
-      await words.waitFor({ timeout: 20_000 });
-      if (!/of every trade of a coin is taken in ZEC/.test(await words.innerText()) || !/pool/.test(await page.locator(".token-pool").innerText())) throw new Error(`the paragraph on how trades feed the pool reads "${(await words.innerText()).slice(0, 160)}"`);
       // And the line that says whose the site is not.
       if (!(await page.locator("main#main").innerText()).replace(/\s+/g, " ").includes(INDEPENDENCE)) throw new Error("the coin's page does not say that the site is independent");
       // Facts only: no card, no price, no chart, nothing to buy.
@@ -574,7 +569,6 @@ const SCENARIOS: Scenario[] = [
       ["refunds", "Refunds and deadlines"],
       ["safety", "Staying safe"],
       ["ghost-mode", "Ghost mode"],
-      ["rewards", "Points and weekly rewards"],
       ["faq", "Questions"],
     ] as const
   ).map(
@@ -587,19 +581,6 @@ const SCENARIOS: Scenario[] = [
       },
     }),
   ),
-  {
-    // The Rewards page as anyone sees it: the week and its countdown, the way in, the rules. No address's points.
-    name: "page-rewards",
-    path: "/rewards",
-    noCard: true,
-    async run(page) {
-      await page.getByRole("heading", { name: "Points and weekly rewards", level: 1 }).waitFor();
-      await page.locator(".rewards-count").waitFor({ timeout: 20_000 });
-      await page.getByText("Signing in asks your Solana wallet to sign one plain message, to show that an address is yours. It is not a transaction: it moves nothing, approves nothing and costs no network fee.").waitFor();
-      await page.getByRole("button", { name: "Sign in with a Solana wallet", exact: true }).waitFor();
-      if ((await page.locator(".rewards-points").count()) !== 0) throw new Error("the Rewards page shows points to someone who has not signed in");
-    },
-  },
   {
     // The Stats page with a practice server's made-up swaps: the five figures, the list of recent swaps, the two ranked lists and the grid of chains.
     name: "page-stats",
@@ -841,18 +822,18 @@ if (orderForPage !== null) {
 }
 const chosen = only.length === 0 ? SCENARIOS : SCENARIOS.filter((scenario) => only.includes(scenario.name));
 // Besides the screenshots, the script walks through behaviour. Each walk has a name and can be run alone:
-// layout, first-screen, states-in-use, review, paste, quoting, sheet-touch, focus, picker (also run by its older name, picker-keyboard), slippage, zoom, reduced-motion, chips, site, order, focus-marks, private, rewards, ghost, gas.
+// layout, first-screen, states-in-use, review, paste, quoting, sheet-touch, focus, picker (also run by its older name, picker-keyboard), slippage, zoom, reduced-motion, chips, site, order, focus-marks, private, ghost, gas.
 const walks = (name: string) => only.length === 0 || only.includes(name);
 
 // The site limits how often one visitor may load it, and how often one visitor may ask it its small
-// questions (the settings, the week's points, the totals): sixty of those a minute. This script is one
+// questions (the settings, the coin list, the totals): sixty of those a minute. This script is one
 // visitor, so it keeps a steady pace, and keeps count of the questions each page asks as it opens (the
 // home page asks the most), waiting where another page would take it past what a visitor is allowed.
 let lastVisit = 0;
 const asked: { at: number; questions: number }[] = [];
 async function visit(page: Page, url: string): Promise<void> {
   const pathname = new URL(url).pathname;
-  const questions = pathname === "/" ? 6 : pathname === "/rewards" || pathname === "/stats" || pathname === "/token" ? 4 : 3;
+  const questions = pathname === "/" ? 5 : pathname === "/stats" ? 4 : 3;
   for (;;) {
     const now = Date.now();
     while (asked.length > 0 && now - (asked[0]?.at ?? 0) > 62_000) asked.shift();
@@ -1117,7 +1098,6 @@ if (walks("layout")) {
       await page.getByText("Minimum received").waitFor({ timeout: 5000 });
       await page.waitForTimeout(350);
       const rows = await page.locator(".quote-row dt").allInnerTexts();
-      // (No row of points: a swap adds points only where a rewards address is given, and that is asked in the review.)
       if (JSON.stringify(rows) !== JSON.stringify(["Minimum received", "SaplingDex fee", "Provider fee", "Solana network fee", "Estimated time"])) complaints.push(`${label}: the breakdown's rows are ${JSON.stringify(rows)}`);
       // The line itself: one row from 768 px (44 px high), two below it (64 px). The rate is whole, and the time is on show.
       const lineBox = await line.evaluate((el) => {
@@ -1195,7 +1175,7 @@ if (walks("first-screen")) {
   for (const origin of [baseUrl, practiceUrl]) {
     if (origin === null) continue;
     const where = origin === baseUrl ? "plain" : "practice";
-    const config = (await (await fetch(new URL("/api/config", origin))).json()) as { privacyMode?: string; reserveAddress?: string | null; xUrl?: string | null; githubUrl?: string | null };
+    const config = (await (await fetch(new URL("/api/config", origin))).json()) as { privacyMode?: string; xUrl?: string | null; githubUrl?: string | null };
     const words = POSITIONING[config.privacyMode === "basic" ? "private" : "public"];
     // The policy the server sends with the page: the browser may ask this site and no other, for anything.
     const policy = (await fetch(new URL("/", origin))).headers.get("content-security-policy") ?? "";
@@ -1219,18 +1199,16 @@ if (walks("first-screen")) {
       try {
         let release: () => void = () => undefined;
         const held = new Promise<void>((resolve) => (release = resolve));
-        for (const route of ["**/api/rewards", "**/api/stats"]) {
-          await page.route(route, async (answer) => {
-            await held;
-            await answer.continue();
-          });
-        }
+        await page.route("**/api/stats", async (answer) => {
+          await held;
+          await answer.continue();
+        });
         // (Paced like every other visit; the page is then loaded without waiting for the answers that are held back.)
         await visit(page, "about:blank");
-        asked.push({ at: Date.now(), questions: 6 });
+        asked.push({ at: Date.now(), questions: 5 });
         await page.goto(new URL("/", origin).toString(), { waitUntil: "domcontentloaded" });
         await page.locator(".card-submit .button-primary").waitFor({ timeout: 20_000 });
-        // The count of chains comes with the coin list, which the card needs too. The other figures are still held back.
+        // The count of chains comes with the coin list, which the card needs too. The other figure is still held back.
         await page.locator(".figure", { hasText: "Chains" }).waitFor({ timeout: 20_000 });
         // The headline's words have come up before anything is measured.
         await page.waitForTimeout(1500);
@@ -1246,9 +1224,8 @@ if (walks("first-screen")) {
         const labels = async () => (await page.locator(".figures .figure-label").allInnerTexts()).map(flat);
         const before = await measure();
         const atFirst = await labels();
-        say(JSON.stringify(atFirst) === JSON.stringify(["Chains"]), `with the rewards and the totals still on their way the strip shows ${JSON.stringify(atFirst)}`);
+        say(JSON.stringify(atFirst) === JSON.stringify(["Chains"]), `with the totals still on their way the strip shows ${JSON.stringify(atFirst)}`);
         release();
-        await page.locator(".figure", { hasText: "Points this week" }).waitFor({ timeout: 20_000 });
         await page.waitForLoadState("networkidle");
         await page.waitForTimeout(600);
         const after = await measure();
@@ -1256,15 +1233,13 @@ if (walks("first-screen")) {
           say(JSON.stringify(after[part]) === JSON.stringify(before[part]), `"${part}" moved or changed size when the strip's figures arrived: from ${JSON.stringify(before[part])} to ${JSON.stringify(after[part])}`);
         }
         // The figures, in their order. Each is read from the site's own data, and one that cannot be read is absent:
-        // the pool only where a pool wallet is set, the swaps only where any were delivered. Nothing stands in for one.
+        // the swaps only where any were delivered. Nothing stands in for one.
         const shown = await labels();
-        const all = ["Pool this week", "Points this week", "Swaps delivered", "Chains"];
+        const all = ["Swaps delivered", "Chains"];
         say(shown.every((name) => all.includes(name)) && JSON.stringify(shown) === JSON.stringify(all.filter((name) => shown.includes(name))), `the strip's figures are ${JSON.stringify(shown)}`);
-        say(shown.includes("Pool this week") === (typeof config.reserveAddress === "string"), `the strip ${shown.includes("Pool this week") ? "shows" : "does not show"} a pool, and the server ${typeof config.reserveAddress === "string" ? "has" : "has no"} pool wallet`);
-        if (where === "practice") say(JSON.stringify(shown) === JSON.stringify(all), `on a practice server, which has all four, the strip shows ${JSON.stringify(shown)}`);
+        if (where === "practice") say(JSON.stringify(shown) === JSON.stringify(all), `on a practice server, which has both, the strip shows ${JSON.stringify(shown)}`);
         const values = (await page.locator(".figures .figure-value").allInnerTexts()).map(flat);
         say(values.every((value) => /\d/.test(value)) && (await page.locator(".figures .skeleton").count()) === 0, `a figure of the strip is empty, or a placeholder stands in for one: ${JSON.stringify(values)}`);
-        if (where === "practice") say(/^12\.50? ZEC/.test(values[0] ?? ""), `the sample pool reads "${values[0]}" on the strip`);
         say((await page.locator("ul.figures > li.figure").count()) === shown.length, "the strip is not a list of its figures");
         // The words.
         say(flat(await page.locator(".headline-title").innerText()) === `${words.headline.plain} ${words.headline.accent}`, `the headline reads "${flat(await page.locator(".headline-title").innerText())}"`);
@@ -1359,7 +1334,6 @@ if (walks("first-screen")) {
           await page.screenshot({ path: path.join(out, `first-screen-${where}-${width}-${theme}.png`), fullPage: false });
           shots += 1;
         }
-        await page.unroute("**/api/rewards");
         await page.unroute("**/api/stats");
         await page.locator("#amount-in").fill(AMOUNT);
         await quoted(page);
@@ -1516,19 +1490,7 @@ if (walks("review")) {
     const sentence = await dialog.locator(".review-sentence").innerText();
     expectThat(new RegExp(`^You send ${AMOUNT} ${PAYS.symbol} on ${PAYS.chain}\\. You receive about [\\d.,]+ ${RECEIVES.symbol} on ${RECEIVES.chain}\\.$`).test(sentence), `the plain sentence reads "${sentence}"`);
     const text = await dialog.innerText();
-    for (const part of ["You send", "You receive, about", "Minimum received", "Rate", "SaplingDex fee", "Provider fee", "Solana network fee", "Estimated time", "Time to pay", "58 minutes", "Receiving address", "Refund address", "Rewards address", "Terms of Use"]) expectThat(text.includes(part), `"${part}" is missing from the review`);
-    // Points go to a Solana address, which is asked for here and nowhere else, and may be left out.
-    const points = dialog.locator(".review-address", { hasText: "Rewards address" });
-    expectThat((await points.locator(".review-address-label").innerText()).replace(/\s+/g, " ").trim() === "Points · Solana", `the rewards address stands under "${(await points.locator(".review-address-label").innerText()).replace(/\s+/g, " ").trim()}"`);
-    expectThat((await points.locator(".address-note").innerText()).trim() === "Optional. Without one, this swap adds no points.", `the rewards address's hint reads "${(await points.locator(".address-note").innerText()).trim()}"`);
-    expectThat((await dialog.getByLabel(/Rewards address/).inputValue()) === "" && (await dialog.getByLabel(/Rewards address/).getAttribute("placeholder")) === "Enter Solana address", "the rewards address is not an empty field for a Solana address");
-    // An address of another kind is refused there, and a Solana one is taken.
-    await dialog.getByLabel(/Rewards address/).fill(EVM);
-    await points.getByRole("alert").waitFor({ timeout: 5000 }).catch(() => expectThat(false, "a 0x address is taken as a rewards address"));
-    await dialog.getByLabel(/Rewards address/).fill(SOL);
-    await page.waitForTimeout(300);
-    expectThat((await points.getByRole("alert").count()) === 0, "a Solana address is refused as a rewards address");
-    await dialog.getByLabel(/Rewards address/).fill("");
+    for (const part of ["You send", "You receive, about", "Minimum received", "Rate", "SaplingDex fee", "Provider fee", "Solana network fee", "Estimated time", "Time to pay", "58 minutes", "Receiving address", "Refund address", "Terms of Use"]) expectThat(text.includes(part), `"${part}" is missing from the review`);
     // Both addresses in full, character for character.
     const shown = (await dialog.locator(".address").allInnerTexts()).map((t) => t.replace(/\s/g, ""));
     expectThat(shown.includes(SOL) && shown.includes(EVM), `the addresses are not shown in full (${shown.join(", ")})`);
@@ -1795,7 +1757,7 @@ if (walks("slippage") && practiceUrl !== null) {
 // by 450; a small phone is 320 wide. At both sizes every page must still work: nothing cut off,
 // nothing scrolling sideways, the accessibility rules kept. At 200% the card's main button must be
 // in view and the sheets must fit on the screen. The pages: home (with the coin picker and the review),
-// Track order, Docs, Rewards, Terms, Privacy and, with a practice server, the coin's page and an
+// Track order, Docs, Terms, Privacy and, with a practice server, the coin's page and an
 // order's page with its deposit details on show.
 if (walks("zoom")) {
   const SIZES = [
@@ -1806,7 +1768,6 @@ if (walks("zoom")) {
     ["home", "/?amount=25"],
     ["track", "/track"],
     ["docs", "/docs"],
-    ["rewards", "/rewards"],
     ["terms", "/terms"],
     ["privacy", "/privacy"],
     ["token", "/token"],
@@ -1930,7 +1891,7 @@ if (walks("zoom")) {
   // there is to say: the time of a very slow swap ("about 114 min", and in the breakdown "about 114 min ·
   // slower than most"). Every row of the breakdown keeps its line. The quote's own line is looked at at
   // 480 px, where it is two rows, and at 1280 px, where it is one: the rate is whole and the time is on show
-  // at both; the points label is whole or, where there is no room for it, out of sight (never cut in half).
+  // at both.
   for (const wide of [false, true]) {
     const context = await browser.newContext({ viewport: { width: wide ? 1280 : 480, height: 800 }, deviceScaleFactor: 2, colorScheme: "dark" });
     await context.addInitScript(`document.addEventListener("readystatechange", () => { if (document.readyState === "interactive") document.documentElement.dataset.theme = "dark"; });`);
@@ -1967,7 +1928,7 @@ if (walks("zoom")) {
         };
       });
       if (line.height !== (wide ? 44 : 64)) complaints.push(`${at}: the quote's line is ${line.height} px high`);
-      // (The line carries the time and nothing of points: a swap adds points only where a rewards address is given, in the review.)
+      // The line carries one label: the time.
       if (line.chips.length !== 1 || line.chips[0] !== "about 114 min") complaints.push(`${at}: the quote's line carries ${JSON.stringify(line.chips)}`);
       if (line.tones[0] !== "warning") complaints.push(`${at}: a very slow swap's time is not marked as a warning on the quote's line`);
       if (line.cut || line.seen[0] !== "in") complaints.push(`${at}: the quote's line does not hold its rate and its time as it should (${JSON.stringify(line)})`);
@@ -2298,14 +2259,7 @@ if (walks("private") && privateUrl !== null && practiceUrl !== null) {
   shots += result.shots;
 }
 
-// Signing in on the Rewards page, with a stand-in Solana wallet (see scripts/rewards-walk.ts).
-if (walks("rewards") && practiceUrl !== null) {
-  const result = await rewardsWalk(browser, { practiceUrl, out, visit });
-  complaints.push(...result.complaints);
-  shots += result.shots;
-}
-
-// Ghost mode: nothing asked of another site, no wallet spoken to, nothing kept, and an order gone at its end (see scripts/ghost-walk.ts).
+// Ghost mode: nothing asked of another site, nothing kept, and an order gone at its end (see scripts/ghost-walk.ts).
 if (walks("ghost") && practiceUrl !== null) {
   const result = await ghostWalk(browser, { practiceUrl, out, visit });
   complaints.push(...result.complaints);

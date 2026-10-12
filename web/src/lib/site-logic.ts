@@ -5,7 +5,7 @@ import { chainInfo, chainName } from "../../../shared/chains.ts";
 import { CHAIN_ORDER } from "../config.ts";
 
 export interface Feature {
-  key: "swaps" | "tracking" | "rewards" | "ghost" | "gas" | "token";
+  key: "swaps" | "tracking" | "ghost" | "gas" | "token";
   title: string;
   text: string;
   /** Where to go to use it or to read more. */
@@ -32,8 +32,7 @@ export function isPrivateMode(config: { privacyMode?: unknown } | null | undefin
  * the list. Nothing here is a plan.
  *
  * Where swaps are routed privately the first item says so. Where they are not, the list is the one
- * it always was. What is said of points is the same either way: a privately routed swap adds them
- * as any other does.
+ * it always was.
  *
  * Ghost mode is on the list everywhere: its switch is in the header however swaps are routed. What
  * is said of it here is what it does and, in the last sentence, the first thing it does not.
@@ -51,7 +50,7 @@ export function features(tokenSet: boolean, privateRouting = false): readonly Fe
     { key: "ghost", title: "Ghost mode", text: "One switch in the header. While it is on, the site keeps nothing in your browser but the switch itself, and deletes your order's record once it is delivered or refunded. Your deposit and your delivery are still public on-chain.", link: { href: "/docs/ghost-mode", label: "How Ghost mode works" } },
   ];
   if (privateRouting) all.push({ key: "gas", title: "Add gas", text: "A switch on the swap card, where gas can be added. With it on, a second, small order delivers a little of the receiving chain's own coin to the same address, by the same private route, so a new wallet can move what arrived straight away. There are two payments.", link: { href: "/docs/add-gas", label: "How Add gas works" } });
-  if (tokenSet) all.push({ key: "token", title: "The $SAPDEX coin", text: "The coin's address, its chain, what it trades against and where it was planted are shown on this site, with how its trades feed the weekly pool.", link: { href: "/token", label: "The coin's facts" } });
+  if (tokenSet) all.push({ key: "token", title: "The $SAPDEX coin", text: "The coin's address, its chain, what it trades against and where it was planted are shown on this site.", link: { href: "/token", label: "The coin's facts" } });
   return all;
 }
 

@@ -80,7 +80,6 @@ function order(n: number, createdAt: number, swap: Swap = {}): OrderRecord {
     refundFee: null,
     recipient: chainInfo(to.chain).family === "evm" ? `0x${made(`recipient ${n}`, 20)}` : `Rcv${made(`recipient ${n}`, 20)}`,
     refundTo: `0x${made(`refund ${n}`, 20)}`,
-    rewardsAddress: `0x${made(`rewards ${n}`, 20)}`,
     confidentiality: swap.confidentiality ?? "public",
     depositAddress: `0x${made(`deposit ${n}`, 20)}`,
     depositMemo: `memo-${made(`memo ${n}`, 6)}`,
@@ -124,7 +123,7 @@ function neverOf(record: OrderRecord): string[] {
   const { to } = record;
   const delivered = deliveryOf(record);
   const receiving = [to.symbol, to.name, to.id, to.contract ?? to.id, `"${to.chain}"`, chainName(to.chain), record.amountOut, record.minAmountOut, formatExact(BigInt(record.amountOut), to.decimals), formatExact(BigInt(record.minAmountOut), to.decimals), record.amountOutUsd, record.amountOutUsd.split(".")[0]!, record.recipient, delivered, delivered.replace(/^0x/, "")];
-  const addresses = [record.refundTo, record.rewardsAddress!, record.depositAddress, record.depositMemo!];
+  const addresses = [record.refundTo, record.depositAddress, record.depositMemo!];
   const names = [record.id, hashId(record.id), createHash("sha256").update(record.id).digest("hex")];
   return [...receiving, ...addresses, ...names];
 }
@@ -888,7 +887,7 @@ describe("the switch, and practice mode", () => {
     expect(page.text).toBe((await off.get("/no-such-page")).text);
     // The page it serves says so from its first byte, so that no link is drawn and taken away again.
     expect(page.text).toContain('<html lang="en" data-stats="off">');
-    expect(navItems(statsPageOn({ statsPage: false })).map((item) => item.label)).toEqual(["Swap", "Track order", "Rewards", "Docs"]);
+    expect(navItems(statsPageOn({ statsPage: false })).map((item) => item.label)).toEqual(["Swap", "Track order", "Docs"]);
 
     const on = await server({ SITE_URL: "http://127.0.0.1" });
     expect((await on.get("/api/config")).json.statsPage).toBe(true);
@@ -897,9 +896,9 @@ describe("the switch, and practice mode", () => {
     expect(shown.status).toBe(200);
     expect(shown.text).toContain('<html lang="en">');
     expect(shown.text).toContain('<link rel="canonical" href="http://127.0.0.1/stats" />');
-    expect(navItems(statsPageOn({ statsPage: true })).map((item) => `${item.label} ${item.href}`)).toEqual(["Swap /", "Track order /track", "Rewards /rewards", "Stats /stats", "Docs /docs"]);
+    expect(navItems(statsPageOn({ statsPage: true })).map((item) => `${item.label} ${item.href}`)).toEqual(["Swap /", "Track order /track", "Stats /stats", "Docs /docs"]);
     // Settings that say nothing of it, as from a server that has no such page: no link.
-    expect(navItems(statsPageOn({}))).toHaveLength(4);
+    expect(navItems(statsPageOn({}))).toHaveLength(3);
   });
 
   it("a practice server has made-up swaps to show, added once, each a sending side with a hash that is plainly no real one; a server that is not one has none", async () => {
@@ -923,7 +922,7 @@ describe("the switch, and practice mode", () => {
     }
     expect([...stats.feed].map((row) => row.at).sort().reverse()).toEqual(stats.feed.map((row) => row.at));
     // The folder says what it holds, and the live site does not start on it (see boot.test.ts).
-    expect(fs.existsSync(path.join(practice.dataDir, "rewards", "SAMPLE-CONTENT"))).toBe(true);
+    expect(fs.existsSync(path.join(practice.dataDir, "SAMPLE-CONTENT"))).toBe(true);
     // Started again at the same moment, it adds nothing: each quarter of an hour is filled once.
     await new Promise<void>((resolve) => running.pop()!.stop(resolve));
     const again = await server({ PROVIDER_STUB: "true" }, practice.dataDir);

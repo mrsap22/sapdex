@@ -1,11 +1,11 @@
-// Sample content for practice mode: past orders in every end state, points over a few weeks, two
-// paid weeks, a reserve with a balance, a token with an address and three months of made-up swaps
-// behind the Stats page, so that every screen can be looked at full while testing on one's own machine.
+// Sample content for practice mode: past orders in every end state, a token with an address and
+// three months of made-up swaps behind the Stats page, so that every screen can be looked at full
+// while testing on one's own machine.
 //
 // It exists only in practice mode (local development with the practice provider). The live site
 // never has it: production refuses to start in practice mode, nothing here runs unless practice
 // is on, and a test holds both. A data folder that has been given any of it says so in a note of
-// its own (rewards/SAMPLE-CONTENT), and a server that is not in practice mode will not start on
+// its own (SAMPLE-CONTENT), and a server that is not in practice mode will not start on
 // such a folder. Every address and hash below is made up from fixed text, so they are nobody's.
 
 import { createHash } from "node:crypto";
@@ -15,9 +15,7 @@ import { base58 } from "@scure/base";
 import { toChecksumAddress } from "../shared/addresses.ts";
 import type { CoinRef, OrderDetails, OrderStatus } from "../shared/api.ts";
 import { explorerTxUrl } from "../shared/chains.ts";
-import { pointsMicro, RESERVE_ASSET, sharePool, weekBounds, weekOf } from "../shared/rewards.ts";
 import type { Config } from "./config.ts";
-import { orderHash, type PointsEntry, type Rewards, type WeekRecord } from "./rewards.ts";
 import type { Delivery, Stats } from "./stats.ts";
 import { writeDurable, type OrderRecord, type OrderStore } from "./store.ts";
 
@@ -26,30 +24,25 @@ const address = (label: string) => toChecksumAddress(`0x${made(label, 20)}`);
 const hash = (label: string) => `0x${made(label, 32)}`;
 /** A made-up Solana address: 32 bytes written in base58, as a real one is. Nobody holds its key. */
 const solAddress = (label: string) => base58.encode(createHash("sha256").update(`saplingdex sample ${label}`).digest());
-/** A made-up Solana transaction signature: 64 bytes written in base58. */
-const solSignature = (label: string) => base58.encode(createHash("sha512").update(`saplingdex sample ${label}`).digest());
 
 /** What a practice server shows where the operator has set nothing yet. */
 export const SAMPLE = {
   tokenAddress: solAddress("token"),
-  reserveAddress: solAddress("reserve"),
-  /** What the sample pool wallet holds of the coin rewards are paid in: 12.5 ZEC, in its smallest unit. */
-  pool: 1_250_000_000n,
 } as const;
 
 /** Where, inside a data folder, the note is kept that says the folder holds practice content. */
-export const SAMPLE_MARKER = path.join("rewards", "SAMPLE-CONTENT");
+export const SAMPLE_MARKER = "SAMPLE-CONTENT";
+/** The same note one folder down, where a data folder filled by an earlier practice server has it. It is read, and never written. */
+export const SAMPLE_MARKER_BEFORE = path.join("rewards", "SAMPLE-CONTENT");
 
 /** True when a data folder holds practice content: a practice server has put some there at some time. */
 export function holdsSampleContent(dataDir: string): boolean {
-  return fs.existsSync(path.join(dataDir, SAMPLE_MARKER));
+  return [SAMPLE_MARKER, SAMPLE_MARKER_BEFORE].some((place) => fs.existsSync(path.join(dataDir, place)));
 }
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 const QUARTER_MS = HOUR / 4;
-/** What the other sample addresses swapped last week and the week before, in millionths of a US dollar ($2,000 and $1,250), times one, two or three. */
-const OTHERS_USD_MICRO = [2_000_000_000n, 1_250_000_000n] as const;
 
 const COIN: Record<string, CoinRef> = {
   baseEth: { id: "nep141:base.omft.near", symbol: "ETH", name: "Ethereum", chain: "base", decimals: 18, contract: null },
@@ -88,8 +81,8 @@ const SAMPLES: Sample[] = [
 /** A made-up order ID of the right shape: 27 characters. */
 export const sampleOrderId = (n: number): string => `SampleOrder${String(n).padStart(16, "0")}`;
 
-function sampleOrder(sample: Sample, rewardsOwner: string, now: number): OrderRecord {
-  // The same made-up person on the chains the samples are paid from and delivered to: a 0x address there, and a Solana address for points.
+function sampleOrder(sample: Sample, now: number): OrderRecord {
+  // The same made-up person on the chains the samples are paid from and delivered to.
   const owner = address("owner");
   const created = now - sample.daysAgo * DAY - 2 * HOUR;
   const finished = sample.status === "expired" ? created + 2 * HOUR : created + 4 * 60_000;
@@ -128,7 +121,6 @@ function sampleOrder(sample: Sample, rewardsOwner: string, now: number): OrderRe
     refundFee: null,
     recipient: sample.to.chain === "sol" ? "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU" : owner,
     refundTo: refund,
-    rewardsAddress: evm ? rewardsOwner : null,
     // Every sample order is an ordinary, publicly routed one.
     confidentiality: "public",
     // The Stats page's sample figures are made up by themselves (see sampleDeliveries); these orders are not added to them.
@@ -216,29 +208,23 @@ export function sampleDeliveries(fromQuarter: number, toQuarter: number): Delive
 export interface Samples {
   /** The IDs of the sample orders, newest first: a practice browser lists them under Recent orders. */
   orderIds: string[];
-  /** Makes sure an address that signs in on a practice server has something to look at: points over three weeks and two paid weeks. */
-  ensureFor(address: string, now: number): void;
   /** Makes sure the Stats page has made-up swaps up to the last quarter of an hour that has ended. Each quarter is filled once. */
   ensureStats(now: number): void;
-  /** Makes sure this week has points in it before anyone signs in: three made-up addresses with a swap each. */
-  ensureWeek(now: number): void;
-  /** What the sample reserve wallet holds of the coin rewards are paid in, in its smallest unit. The chain is never asked about it. */
-  pool: bigint;
 }
 
 /**
  * Puts the sample content in place. Only ever in practice mode: called with anything else, it
  * refuses. Safe to run at every start: what is already there is left as it is.
  */
-export function seedSamples(options: { practice: boolean; dataDir: string; store: OrderStore; rewards: Rewards; stats?: Stats; now: number }): Samples {
+export function seedSamples(options: { practice: boolean; dataDir: string; store: OrderStore; stats?: Stats; now: number }): Samples {
   if (options.practice !== true) throw new Error("sample data is for practice mode only");
-  const { store, rewards, stats, dataDir, now } = options;
-  // Said first, before anything is put in: the folder now holds made-up orders, points and paid
-  // weeks, and only a practice server may start on it (see where server/boot.ts looks for this).
+  const { store, stats, dataDir, now } = options;
+  // Said first, before anything is put in: the folder now holds made-up orders and totals, and
+  // only a practice server may start on it (see where server/boot.ts looks for this).
   const marker = path.join(dataDir, SAMPLE_MARKER);
   if (!fs.existsSync(marker)) {
     fs.mkdirSync(path.dirname(marker), { recursive: true, mode: 0o700 });
-    fs.writeFileSync(marker, "This data folder holds practice content: orders, points, paid weeks and site totals made up for looking at the site.\nA server that is not in practice mode will not start on it.\n", { mode: 0o600 });
+    fs.writeFileSync(marker, "This data folder holds practice content: orders and site totals made up for looking at the site.\nA server that is not in practice mode will not start on it.\n", { mode: 0o600 });
   }
   // The made-up swaps behind the Stats page. A note beside the totals says up to which quarter of an
   // hour they have been added, so that a quarter is never added twice, at this start or a later one.
@@ -261,93 +247,21 @@ export function seedSamples(options: { practice: boolean; dataDir: string; store
     writeDurable(through, String(last));
   };
   ensureStats(now);
-  const owner = solAddress("owner");
   for (const sample of SAMPLES) {
     if (store.get(sampleOrderId(sample.n)) !== null) continue;
-    store.create(sampleOrder(sample, owner, now));
+    store.create(sampleOrder(sample, now));
   }
-
-  const weeksDir = path.join(dataDir, "rewards", "weeks");
-  const others = [solAddress("holder a"), solAddress("holder b"), solAddress("holder c")];
-  const thisWeek = weekOf(now);
-  const start = weekBounds(thisWeek)?.start ?? now;
-  const past = [weekOf(start - 1), weekOf(start - 7 * DAY - 1)];
-
-  /** One delivered swap of so many US dollars (in millionths), as the points record holds it. */
-  const addEntry = (who: string, label: string, at: number, volumeMicro: bigint, pair: [CoinRef, CoinRef]) => {
-    const entry: PointsEntry = { v: 2, order: orderHash(`sample ${label} ${who}`), address: who, week: weekOf(at), at: new Date(at).toISOString(), volumeUsdMicro: volumeMicro.toString(), reasons: [], from: { symbol: pair[0].symbol, chain: pair[0].chain }, to: { symbol: pair[1].symbol, chain: pair[1].chain } };
-    // Once: an entry that is already there is left as it is.
-    rewards.record(entry);
-  };
 
   return {
     orderIds: SAMPLES.map((sample) => sampleOrderId(sample.n)),
-    pool: SAMPLE.pool,
     ensureStats,
-    ensureWeek() {
-      // Swaps of $3,400, $1,820.50 and $760 this week, by three addresses that are nobody's. They are dated at the
-      // week's first moments, so that they are in the week's total from its first quarter of an hour on.
-      [3_400_000_000n, 1_820_500_000n, 760_000_000n].forEach((volume, index) => addEntry(others[index]!, `this week ${thisWeek}`, start + index * 1000, volume, [COIN.baseEth!, COIN.solUsdt!]));
-    },
-    ensureFor(who, at) {
-      // Points in this week and in the two before it.
-      // Swaps of $1,240.82, $249.91 and $100 this week, of $2,605 and $560.25 last week, and of $1,650 the week before.
-      addEntry(who, "this week a", Math.min(at, start + 6 * HOUR), 1_240_820_000n, [COIN.baseEth!, COIN.solUsdt!]);
-      addEntry(who, "this week b", Math.min(at, start + 30 * HOUR), 249_910_000n, [COIN.arbUsdc!, COIN.baseEth!]);
-      addEntry(who, "this week c", Math.min(at, start + 31 * HOUR), 100_000_000n, [COIN.arbUsdc!, COIN.solUsdt!]);
-      addEntry(who, "last week a", start - 2 * DAY, 2_605_000_000n, [COIN.bnb!, COIN.arbUsdc!]);
-      addEntry(who, "last week b", start - 5 * DAY, 560_250_000n, [COIN.baseEth!, COIN.arbUsdc!]);
-      addEntry(who, "two weeks ago", start - 10 * DAY, 1_650_000_000n, [COIN.baseEth!, COIN.solUsdt!]);
-      others.forEach((other, index) => {
-        addEntry(other, "last week", start - (2 + index) * DAY, OTHERS_USD_MICRO[0] * BigInt(index + 1), [COIN.baseEth!, COIN.solUsdt!]);
-        addEntry(other, "two weeks ago", start - (9 + index) * DAY, OTHERS_USD_MICRO[1] * BigInt(index + 2), [COIN.arbUsdc!, COIN.baseEth!]);
-      });
-      // The two past weeks, closed and paid. Each is written once for the addresses known then; a new
-      // address is added to its shares, so that whoever signs in on a practice server sees payouts.
-      past.forEach((week, index) => {
-        const file = path.join(weeksDir, `${week}.json`);
-        const points = new Map<string, bigint>();
-        const add = (holder: string, micro: bigint) => points.set(holder, (points.get(holder) ?? 0n) + micro);
-        // Ten points for each dollar of the swaps above.
-        others.forEach((other, at2) => add(other, pointsMicro(OTHERS_USD_MICRO[index === 0 ? 0 : 1] * BigInt(index === 0 ? at2 + 1 : at2 + 2))));
-        add(who, pointsMicro(index === 0 ? 3_165_250_000n : 1_650_000_000n));
-        let held: WeekRecord | null;
-        try {
-          held = JSON.parse(fs.readFileSync(file, "utf8")) as WeekRecord;
-        } catch {
-          held = null;
-        }
-        for (const share of held?.shares ?? []) if (!points.has(share.address)) points.set(share.address, BigInt(share.pointsMicro));
-        // 3.2 ZEC last week and 2.6 the week before.
-        const pool = (index === 0 ? 320n : 260n) * 10n ** 6n;
-        const result = sharePool(pool, points, RESERVE_ASSET.minPayout);
-        const end = weekBounds(week)?.end ?? at;
-        // One made-up transaction for the week, written down with every share it paid, as the record tool writes a real one.
-        const paidWith = solSignature(`payout ${week}`);
-        const record: WeekRecord = {
-          v: 1,
-          week,
-          closedAt: new Date(end + HOUR).toISOString(),
-          asset: RESERVE_ASSET.symbol,
-          decimals: RESERVE_ASSET.decimals,
-          pool: pool.toString(),
-          paid: result.paid.toString(),
-          left: result.left.toString(),
-          totalPointsMicro: result.totalPoints.toString(),
-          shares: result.shares.map((share) => ({ address: share.address, pointsMicro: share.points.toString(), payout: share.payout.toString(), carriedMicro: share.carried.toString(), ...(share.payout > 0n ? { tx: paidWith } : {}) })),
-          txs: [{ hash: paidWith, recordedAt: new Date(end + 3 * HOUR).toISOString() }],
-        };
-        writeDurable(file, JSON.stringify(record));
-      });
-    },
   };
 }
 
-/** A practice server's settings, with the sample token and reserve standing in where none is set. Anything the operator did set is kept. */
+/** A practice server's settings, with the sample token standing in where none is set. Anything the operator did set is kept. */
 export function withSampleSettings(config: Config): Config {
   return Object.freeze({
     ...config,
     tokenAddress: config.tokenAddress ?? SAMPLE.tokenAddress,
-    reserveAddress: config.reserveAddress ?? SAMPLE.reserveAddress,
   });
 }

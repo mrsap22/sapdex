@@ -350,8 +350,7 @@ export function routingNote(mode: PrivacyMode, view: { routing?: unknown } | nul
 
 /**
  * True for a quote or an order with no SaplingDex fee at all: every one, unless the server is set
- * to take a fee. It decides what the fee row says and nothing else. Points are counted from the
- * size of a swap, so a swap with no SaplingDex fee adds them like any other.
+ * to take a fee. It decides what the fee row says and nothing else.
  */
 export function feeFree(view: { fees: { appBps: number; appAmount: string } } | null): boolean {
   return view !== null && view.fees.appBps === 0 && /^0+$/.test(view.fees.appAmount);
@@ -561,8 +560,6 @@ export interface Reviewed {
   slippageBps: number;
   recipient: string;
   refundTo: string;
-  /** Where the swap's points go, as shown in the review. Null when the swap adds none. Left out by callers from before points existed. */
-  rewardsAddress?: string | null;
   /** How the quote on screen was routed, as that quote said it. Left out, it reads as public, as a quote that names no routing does. */
   routing?: Routing;
 }
@@ -576,7 +573,7 @@ export const REVIEW_TOLERANCE_BPS = 100;
  * most 1% lower. Returns what differs, or null when the order is the one that was confirmed.
  * Nothing is paid unless this is null.
  */
-export function orderDiffers(order: Pick<OrderView, "from" | "to" | "amountIn" | "minAmountOut" | "slippageBps" | "recipient" | "refundTo"> & { rewardsAddress?: string | null; routing?: Routing }, reviewed: Reviewed): string | null {
+export function orderDiffers(order: Pick<OrderView, "from" | "to" | "amountIn" | "minAmountOut" | "slippageBps" | "recipient" | "refundTo"> & { routing?: Routing }, reviewed: Reviewed): string | null {
   if (order.from.id !== reviewed.from) return "the coin you pay";
   if (order.to.id !== reviewed.to) return "the coin you receive";
   if (order.amountIn !== reviewed.amountIn) return "the amount you pay";
@@ -584,7 +581,6 @@ export function orderDiffers(order: Pick<OrderView, "from" | "to" | "amountIn" |
   if (order.refundTo !== reviewed.refundTo) return "the refund address";
   // An order is never made by another route than the one on screen. Either side that names no routing is public.
   if (routedPrivately(order) !== routedPrivately(reviewed)) return "the routing";
-  if (reviewed.rewardsAddress !== undefined && (order.rewardsAddress ?? null) !== reviewed.rewardsAddress) return "the rewards address";
   // A looser limit than the one reviewed could hide inside the 1% allowed below: it is compared on its own.
   if (order.slippageBps !== reviewed.slippageBps) return "the slippage limit";
   if (!/^\d+$/.test(order.minAmountOut) || !/^\d+$/.test(reviewed.minAmountOut)) return "the minimum you receive";

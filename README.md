@@ -15,8 +15,8 @@ Sapling, the Zcash Foundation, Electric Coin Co. or NEAR.
 
 ```
 Browser (React) ──HTTPS──▶ Our server (Node) ──HTTPS──▶ Swap provider
-   │ no wallet connected        │ order store (disk)      Solana (the pool's wallet)
-   └─ asks this site only       └─ status poller          Sapling (the coin's facts)
+   │ no wallet connected        │ order store (disk)
+   └─ asks this site only       └─ status poller
 ```
 
 - `server/` the Node server (`node:http`, run with `tsx`)
@@ -30,7 +30,7 @@ Rules the code keeps:
 - The server sets the fee and the deposit address. The browser cannot send or change either.
 - Every quote from the provider is verified (signature, then a field-by-field comparison with what was asked) before it is stored or shown.
 - The site connects to no wallet. An order is paid by sending to its deposit address: one transfer for a swap, and a second, to its own address, when gas is added.
-- The one thing that ever speaks to a wallet is the Rewards page's sign-in: a Solana wallet signs one plain message. Never a transaction, an approval or a permit.
+- The site never speaks to any wallet at all: it asks none to connect, to sign or to approve, on any page, and the built site holds no code that could.
 - The browser asks this site and nothing else: never the provider, a chain's node, Sapling or a font host. It never sees a key.
 - The site never holds anyone's funds, for any reason.
 
@@ -50,8 +50,6 @@ Rules the code keeps:
 | `npx tsx scripts/mutation-check.ts` | Switch off each protection in turn and confirm a test notices |
 | `npx tsx scripts/review-shots.ts <url>` | Walk the site in a real browser: screenshots of every state at three widths in both themes, plus checks of behaviour (see below) |
 | `npm run check:pages` | Measure the built pages in a real browser: Lighthouse (performance 90 or more, accessibility 100, layout shift 0.05 at most) and the axe accessibility rules for WCAG 2.2 AA The speed score is taken on a pretend phone; on a slower machine (the automatic check's, say) the phone's processor is slowed less, by the measuring tool's own table, so that the same phone is measured everywhere, and a page that falls just short is measured twice more and judged by the middle score. On GitHub's shared machines the speed score and the paint time are printed as warnings and do not fail the run; accessibility and layout shift fail it everywhere |
-| `npm run rewards:export -- --week … --pool … [--close]` | Show what closing a week of points would do. With `--close`, close it and write the list of payouts (sends nothing) |
-| `npm run rewards:record -- --week … --tx <signature>` | Record the transactions that paid a closed week, after checking on Solana what each one paid |
 | `npx tsx scripts/make-brand.ts` | Make the emblem the page uses, the favicons, the home-screen icons and the web manifest again from the one vector in `web/src/assets/brand/` (only when it changes) |
 | `npm run check:logos -- http://127.0.0.1:8799` | Ask a running site for its coin list and fail, naming them, if a listed coin has no logo. Run it after the provider lists new coins. A coin that was looked for and is not in the logo collection is named in the script's own list, and is shown as a plain coin drawing until it has one |
 | `npx tsx scripts/make-coin-icons.ts` | Make the coin and chain icons again from the logo files in `web/src/assets/coins/` and `web/src/assets/chains/` (only when one is added or changed): each becomes a 96 px WebP under `web/public/` |
@@ -120,17 +118,6 @@ Throughout every walk, in every mode, it fails if the browser asks any address
 but the site's own for anything: a font, a picture, a chain, Sapling, a wallet
 service.
 
-It also walks signing in on the Rewards page (walk name `rewards`, in
-`scripts/rewards-walk.ts`), with a stand-in Solana wallet whose key is made up
-from fixed text and which writes down everything it is asked. The walk fails if
-any wallet code is fetched, or the wallet is asked anything, before "Sign in" is
-pressed; if it is asked for anything but to connect and to sign that one plain
-message (never a transaction); if the message is not the server's own (naming
-the site and the wallet's address, and saying it is not a transaction); if a
-refusal signs anyone in; if the page or the server's answer names any address
-but the signed-in one and the pool's; if the sign-in outlives the page; or if,
-in Ghost mode, the sign-in is offered at all.
-
 Every screen it photographs is also put through the axe accessibility rules
 (all of axe's rules for WCAG 2.0 to 2.2 at levels A and AA, the size-of-target
 rule among them, and its "best practice" rules; `scripts/axe.ts` says exactly
@@ -142,19 +129,19 @@ size-of-target rule would call it too small. And the logo's alternative text,
 its own, which is what is read out, so nothing is said twice. The run also lays the pages out as a
 1280 px window zoomed to 200% would (640 px wide), and at 320 px wide, and
 checks that nothing is cut off or scrolls sideways there: the home page with
-the coin list and the review, Track order, Docs, Rewards, Terms, Privacy, the
+the coin list and the review, Track order, Docs, Terms, Privacy, the
 token page, and, with `--practice`, an order's page with its deposit details.
 
 `npm run check:pages` is the short version that also runs on every push. It
 starts the built site itself in practice mode, with a made-up token address,
-and measures nine pages with Lighthouse as a phone on a slow connection would
-load them: the home page, Track order, Docs, Rewards, Terms, Privacy, Stats, the
+and measures eight pages with Lighthouse as a phone on a slow connection would
+load them: the home page, Track order, Docs, Terms, Privacy, Stats, the
 token's page, and the page of a pretend order it makes. Performance must be 90
 or more and accessibility 100; a page may not move by more than 0.05 while it
 loads; and the largest paint must come within 3.5 seconds. (It comes at about
 2.9 today. The site's own budget is 2 seconds and is not met; the limit is
 there so that the figure cannot get much worse unnoticed.) It then runs the axe
-rules on the same nine pages in both themes at phone and desktop width. On
+rules on the same eight pages in both themes at phone and desktop width. On
 GitHub's shared machines the speed score and the paint time are printed as
 warnings and do not fail the run; everything else does.
 
@@ -163,106 +150,16 @@ warnings and do not fail the run; everything else does.
 `npx tsx scripts/mutation-check.ts` switches off one protection at a time (the
 signature check, the region block, a rate limit and so on), runs the tests, and
 puts the code back. Every line should say "caught". Run it after changing any
-protection. With some two hundred protections it takes about half an hour; a
+protection. With some seven hundred protections it takes a few hours; a
 word after the command runs only the protections whose file or label contains it.
 
-## Points and weekly payouts
-
-Each delivered swap that names a rewards address adds an entry to the points record
-(`DATA_DIR/rewards/entries`, one small file per swap; the rules are in
-`shared/rewards.ts`). The rule is one line: 10 points for each US dollar of a
-delivered swap's value (one point for every 10 cents), where the value is the
-provider's dollar value of what was paid, as the order's record holds it. A swap
-that is refunded, fails, runs out or is under-paid adds nothing. No fee, coin or
-route changes the count, and there is no weekly limit. An address's share of a
-week's pool is its points divided by all the points of that week. Nobody is shown
-another address's points: there is no list and no ranking.
-
-The pool is what one Solana wallet (`RESERVE_ADDRESS`) holds in ZEC. It fills by
-itself: on Sapling a share of every trade of the site's coin is paid, in ZEC, to
-the wallet the coin's planter chose, which is the pool's wallet. The server reads
-the wallet's ZEC balance from Solana (`SOLANA_RPC_URL`) at most once a minute.
-Other coins in that wallet are no part of the pool and are not shown.
-
-Nothing needs doing for points to be counted. Payouts are sent by hand, from the
-pool's wallet, once a week:
-
-Rewards are paid in ZEC on Solana (the ZEC that NEAR's Omni Bridge issues there,
-mint `A7bdiYdS5GjqGFtxf17ppRHtDKPkkRqbKtR27dxvQXaS`; `REWARD_TOKEN_ADDRESS`), to
-each rewards address, which is a Solana address. Every amount the two tools take
-and print is an amount of ZEC, worked in the coin's own smallest unit (8 decimals).
-The smallest payout that is sent is 0.001 ZEC: a payment to a wallet that has
-never held ZEC first opens an account for it, which costs the sender a little
-SOL, and a share worth less than that is not sent. Its points are carried into
-the next week.
-
-1. After the week has ended (Sunday 23:59 UTC), look at what closing it would do with
-   the pool you have in mind, as an amount of ZEC:
-
-   ```
-   npm run rewards:export -- --week 2026-W41 --pool 12.5
-   ```
-
-   This writes nothing. It prints the addresses, the total points, the week's volume
-   in dollars, each share and payout, what is carried, what is withheld, what stays
-   in the reserve, what the pool's wallet holds, and, in the last column of the list,
-   which addresses have no ZEC account yet (`needs_zec_account`: paying one of those
-   costs a little SOL to open it). Run it with another pool as often
-   as you like. Whole-number maths, every share rounded down; the remainder stays in
-   the reserve. A share under the smallest payout is not sent and its points are
-   carried into the next week.
-2. Close the week: the same command with `--close` at the end.
-
-   ```
-   npm run rewards:export -- --week 2026-W41 --pool 12.5 --close
-   ```
-
-   This fixes the pool, and writes `rewards/exports/2026-W41.csv` (address, points,
-   share, payout, carried, withheld) and a summary beside it, in the data folder. Run
-   again for the same week and pool, it writes the same files. A closed week cannot be
-   closed again with another pool. Closing checks three things first, and closes
-   nothing if one of them fails:
-
-   - **The pool's wallet holds the pool.** The wallet's balance of ZEC is
-     read from Solana. A pool larger than it is refused, and so is any pool while
-     the balance cannot be read or `RESERVE_ADDRESS` is not set.
-   - **The payout list is screened.** Every address that is due a payout is screened
-     against the sanctions list the server screens orders with (the copy in the data
-     folder, fetched again when it is more than a day old). With no usable list,
-     nothing is closed. A listed address is sent nothing and carries nothing: its share
-     stays in the reserve, is not handed to the others, and is marked `withheld` in the
-     week's record and in the CSV. The summary counts such addresses.
-   - **Weeks are closed in order.** A week is not closed while an earlier week that
-     holds points is still open, because points are carried from one week into the
-     next and no further. A week nothing is paid for is closed with `--pool 0`: every
-     address's points are carried.
-3. Send the payouts on the list from the pool's wallet, in ZEC on Solana, each for
-   exactly its amount. One transaction may pay several addresses. No tool here sends
-   anything, and no key is ever given to the server.
-4. Record the transactions, so that the Rewards page shows them:
-
-   ```
-   npm run rewards:record -- --week 2026-W41 --tx <signature> --tx <signature>
-   ```
-
-   Each is checked on Solana, by its signature: final, successful, and one in which
-   the pool's wallet's holding of ZEC (the reward coin, and no other) went down and
-   an address on the week's list gained exactly its payout, where none is on record
-   for it yet. The signature is kept with each payout it made. A transaction that
-   made no such payment (another coin, another amount, coins that came from another
-   wallet) is refused, and so is one already on record for any week. If one fails the check, nothing is recorded. The Rewards page counts
-   as paid only the payouts that have their transaction on record, and shows each
-   address the transaction of its own payout.
-
-Both tools read the same variables as the server (`DATA_DIR`, `RESERVE_ADDRESS`,
-the Solana node) and are run where the data is: on Railway, in the service's
-shell. There is no web route for either. Back the `rewards` folder up with `orders`.
+## Practice mode
 
 Practice mode (`PROVIDER_STUB=true`, local development only) starts with sample
-content: past orders, a token, a reserve, and points for whichever address signs
-in. None of it can exist on the live site (`server/sample.ts`, `test/boot.test.ts`).
+content: past orders, a token, and made-up swaps behind the Stats page. None of
+it can exist on the live site (`server/sample.ts`, `test/boot.test.ts`).
 A data folder that a practice server has used says so in a file of its own,
-`rewards/SAMPLE-CONTENT`, and the live site does not start on that folder (plain
+`SAMPLE-CONTENT`, and the live site does not start on that folder (plain
 development does, and says so in its log): give the practice server a `DATA_DIR`
 of its own.
 
@@ -291,24 +188,20 @@ bad value stops the server with the variable's name in the log.
 | `ADD_GAS` | Add gas, the second small order beside a swap: `on` or `off`. Default `on` (it is only ever offered where swaps are routed privately). `off` takes the switch off the swap card and makes no gas order, whatever a request asks for; swaps are untouched | Leave unset. Type `off` to switch Add gas off without a new build |
 | `STATS_RECEIVED_MIN` | How many swaps the site must have delivered before the Stats page lists "Top coins received" (totals by coin, never by swap). Default `1` | Leave unset |
 | `BSC_RPC_URL`, `ETH_RPC_URL`, `BASE_RPC_URL`, `ARBITRUM_RPC_URL` | Chain access, server only. Public endpoints are used when unset | An RPC provider's dashboard, when you want better reliability |
-| `SOLANA_RPC_URL` | Solana access, server only: the pool's wallet is read through it, and the payout tools check through it. Secret: it is never printed or logged, not even its host. A public endpoint is used when unset, which is slow and limited | A Solana RPC provider's dashboard. Set it before the pool is shown |
 | `TOKEN_ADDRESS` | The site's coin: its mint address on Solana, as Sapling shows it. A Solana address; anything else stops the start. Shows the token page and the home page's token section when set | After the coin is planted on Sapling |
-| `RESERVE_ADDRESS` | The pool's wallet, on Solana: weekly payouts are sent from it. A Solana address; anything else stops the start. When set, the Rewards page and the home page show what it holds in ZEC, with its dollar value and a link to it on Solscan | The pool wallet's public address. Never a key |
-| `REWARD_TOKEN_ADDRESS` | The coin rewards are paid in, by its mint on Solana. Default `A7bdiYdS5GjqGFtxf17ppRHtDKPkkRqbKtR27dxvQXaS`, ZEC on Solana (8 decimals). The pool, the payout tools and the check of each payout go by it; the site says ZEC whatever it is set to | Leave unset |
 | `ZEC_SHIELDED` | Whether a real swap has shown that ZEC sent to a unified Zcash address with no transparent part arrives shielded: `unproven` or `proven`. Default `unproven`: beside a unified address the site says only that the provider delivers to it, and no page says that ZEC arrives shielded. `proven` shows the sentences that say so, on the home page, in the Docs and among the questions | Leave unset. Type `proven` only after the test has shown it |
 | `X_URL` | Where the X icon in the header and footer leads. None is built in: unset, there is no X icon | The project's account on X, when it has one |
 | `GITHUB_URL` | Where the GitHub icon leads. None is built in: unset, there is no GitHub icon | The project's repository |
 | `EXCLUDED_CHAINS` | More chains never to offer on the site, by the provider's chain code, comma-separated. Their coins are left out of the coin list, so they cannot be shown, quoted or ordered. Adds to the built-in list (`abs`); it cannot remove from it | Leave unset |
 | `SUPPORT_CONTACT` | One support contact, shown in the footer and on a failed order's page. Required before `SWAPS_PAUSED=false` in production: the server will not start with swaps on and nobody to write to | An email address or a link |
-| `SITE_URL` | The site's own address, for example `https://example.org`: the share image's full address and each page's canonical link are written with it, and it is the one name the Rewards sign-in will carry. None is built in | The site's domain, once it has one |
+| `SITE_URL` | The site's own address, for example `https://example.org`: the share image's full address and each page's canonical link are written with it. None is built in | The site's domain, once it has one |
 | `ALERT_WEBHOOK_URL` | Where operator alerts are posted | A Slack or Discord "incoming webhook" URL |
 
 `PROVIDER_STUB` is for local development only and is refused in production.
 
 While `PRIVACY_MODE` is `basic`, every quote asks the provider for private
 routing, and a person can still choose to route one swap in public. The fees a
-quote shows are the ones the provider's answer holds, and points are counted
-from the swap's dollar value, on a private swap as on any other. When the provider will not give a private quote, the site
+quote shows are the ones the provider's answer holds. When the provider will not give a private quote, the site
 says "Private routing is not available for this swap right now." and offers
 "Swap without private routing"; it never routes a swap in public by itself. A
 privately routed order is not found from its deposit address on the Track order
@@ -368,9 +261,8 @@ and the site never holds funds.
   transfers, each sent by the person from their own wallet.
 - **Each stands alone.** If only the swap is paid, it is delivered and the gas
   order runs out unpaid. If only the gas is paid, the gas arrives.
-- **Points and Stats.** A delivered gas order adds its dollars to the volume
-  and its points to the swap's rewards address, once. It is not counted as a
-  swap and has no row among the recent swaps.
+- **Stats.** A delivered gas order adds its dollars to the volume, once. It is
+  not counted as a swap and has no row among the recent swaps.
 - **Ghost mode.** Both orders are made in Ghost mode, and each record is deleted
   when that order is delivered or refunded.
 
@@ -443,7 +335,6 @@ Everything that matters is in `DATA_DIR`:
 
 - `orders/` one JSON file per order. This is the only data that cannot be rebuilt. Old records are deleted on a schedule (an expired order that was never paid, 24 hours after its deadline; any other finished order, 30 days after it finished); an unfinished order with funds in it is never deleted automatically. An order made in Ghost mode is deleted sooner: the moment it is delivered or refunded.
 - `ghost/gone/` one small file for each order made in Ghost mode whose record was deleted when it finished: named by a one-way fingerprint of the order's ID, holding one word for how it ended, and removed after 30 days. It is what lets the order's own link say that it finished. Nothing else of such an order is kept.
-- `rewards/` the points record: one small file per delivered swap that added points (`entries/`), one per closed week (`weeks/`), and the lists the payout tool wrote (`exports/`). It cannot be rebuilt once the orders behind it have been deleted, so it is backed up with them. It is never deleted automatically.
 - `sanctions/`, `geo/`, `cache/` are downloaded again automatically.
 - `logs/` access logs, deleted after 14 days and capped at 50 MB a day.
 

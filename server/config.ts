@@ -5,7 +5,6 @@ import path from "node:path";
 import { checkAddress } from "../shared/addresses.ts";
 import type { Confidentiality } from "../shared/api.ts";
 import { WALLET_CHAIN_NODE, WALLET_CHAINS, type WalletChain } from "../shared/chains.ts";
-import { RESERVE_ASSET } from "../shared/rewards.ts";
 
 export type RuntimeEnv = "production" | "development" | "test";
 
@@ -55,13 +54,9 @@ export interface Config {
   addGas: boolean;
   /** How many swaps the site must have delivered before the Stats page lists the coins received. */
   statsReceivedMin: number;
-  rpcUrls: Readonly<Record<WalletChain | "sol", string>>;
+  rpcUrls: Readonly<Record<WalletChain, string>>;
   /** The site's own coin: its mint on Solana. The token's page and the home page's token section are there once it is set. */
   tokenAddress: string | null;
-  /** The pool's wallet, on Solana: weekly payouts are sent from it. The site shows what it holds in ZEC, and its payouts, once it is set, and nothing about a pool until then. */
-  reserveAddress: string | null;
-  /** The coin rewards are paid in: ZEC on Solana, by its mint (REWARD_TOKEN_ADDRESS). The built-in one unless the setting names another. */
-  rewardTokenAddress: string;
   /**
    * Whether it has been shown, by a real swap, that ZEC sent to a unified Zcash address with no
    * transparent part arrives shielded (ZEC_SHIELDED). "unproven" unless it is set to "proven": the
@@ -76,8 +71,6 @@ export interface Config {
   excludedChains: ReadonlySet<string>;
   /** Where the site is reached, as an origin ("https://example.org"). Only used to give link previews the full address of the share image. */
   siteUrl: string | null;
-  /** True when SITE_URL itself was set. The site's address is then taken as given everywhere, the sign-in included. */
-  siteUrlSet: boolean;
   alertWebhookUrl: string | null;
 }
 
@@ -124,17 +117,11 @@ export const DEFAULT_BLOCKED_COUNTRIES: readonly string[] = [
 /** Stands in for a fee address in development and tests, where a fee is set and no address is. Never accepted in production. */
 export const DEV_FEE_RECIPIENT = "0x00000000000000000000000000000000000000fe";
 
-const DEFAULT_RPC: Record<WalletChain | "sol", string> = {
-  ...WALLET_CHAIN_NODE,
-  sol: "https://api.mainnet-beta.solana.com",
-};
-
-const RPC_ENV: Record<WalletChain | "sol", string> = {
+const RPC_ENV: Record<WalletChain, string> = {
   bsc: "BSC_RPC_URL",
   eth: "ETH_RPC_URL",
   base: "BASE_RPC_URL",
   arb: "ARBITRUM_RPC_URL",
-  sol: "SOLANA_RPC_URL",
 };
 
 
@@ -304,33 +291,22 @@ export function loadConfig(env: Env = process.env): Config {
     }
   }
 
-  const rpcUrls = { ...DEFAULT_RPC };
-  for (const chain of [...WALLET_CHAINS, "sol"] as const) {
+  const rpcUrls = { ...WALLET_CHAIN_NODE };
+  for (const chain of WALLET_CHAINS) {
     const url = httpsUrl(env, RPC_ENV[chain], !production);
     if (url !== null) rpcUrls[chain] = url;
   }
 
-  // The coin, the pool's wallet and the coin rewards are paid in are all on Solana. Each is checked
-  // as a Solana address, exactly as written (capitals are part of one); an address of another kind
-  // (a 0x address, say) stops the start. The value is never repeated in the message.
-  const solanaAddress = (name: string, what: string): string | null => {
-    const given = read(env, name);
-    if (given === null) return null;
-    const check = checkAddress("sol", given);
-    if (!check.ok) fail(name, `must be a Solana address (${what})`);
-    return check.address;
-  };
-
-  const tokenAddress = solanaAddress("TOKEN_ADDRESS", "the coin's mint");
-
-  const reserveAddress = solanaAddress("RESERVE_ADDRESS", "the pool's wallet");
-  if (reserveAddress !== null && reserveAddress === tokenAddress) fail("RESERVE_ADDRESS", "must be the pool's wallet, not the coin's own address");
-
-  // The coin rewards are paid in, by its mint on Solana. Left unset it is the built-in one: ZEC on
-  // Solana. The pool, the payout tools and the check of each payout all go by it.
-  const rewardTokenAddress: string = solanaAddress("REWARD_TOKEN_ADDRESS", "the reward coin's mint") ?? RESERVE_ASSET.contract;
-  if (rewardTokenAddress === reserveAddress) fail("REWARD_TOKEN_ADDRESS", "must be the reward coin's mint, not the pool's wallet");
-  if (rewardTokenAddress === tokenAddress) fail("REWARD_TOKEN_ADDRESS", "must be the reward coin's mint, not the site's own coin");
+  // The coin is on Solana. Its address is checked as a Solana address, exactly as written (capitals
+  // are part of one); an address of another kind (a 0x address, say) stops the start. The value is
+  // never repeated in the message.
+  let tokenAddress: string | null = null;
+  const tokenGiven = read(env, "TOKEN_ADDRESS");
+  if (tokenGiven !== null) {
+    const check = checkAddress("sol", tokenGiven);
+    if (!check.ok) fail("TOKEN_ADDRESS", "must be a Solana address (the coin's mint)");
+    tokenAddress = check.address;
+  }
 
   // Shielded ZEC is a switch, and it is "unproven" unless set to "proven". Unproven, no page says
   // that ZEC arrives shielded. It is set to "proven" only after a real swap has shown it.
@@ -365,9 +341,7 @@ export function loadConfig(env: Env = process.env): Config {
     siteUrl = parsed.origin;
   }
   // No address is built in. Set, it is what the page says of itself (the share image's address, each
-  // page's canonical link), and the sign-in names it and nothing else. Left unset, the page says
-  // neither, and the sign-in names the host it was asked on.
-  const siteUrlSet = siteUrl !== null;
+  // page's canonical link). Left unset, the page says neither.
 
   const alertWebhookUrl = httpsUrl(env, "ALERT_WEBHOOK_URL", !production);
 
@@ -406,15 +380,12 @@ export function loadConfig(env: Env = process.env): Config {
     statsReceivedMin,
     rpcUrls: Object.freeze(rpcUrls),
     tokenAddress,
-    reserveAddress,
-    rewardTokenAddress,
     zecShielded,
     xUrl,
     githubUrl,
     supportContact,
     excludedChains,
     siteUrl,
-    siteUrlSet,
     alertWebhookUrl,
   });
 }
@@ -439,11 +410,8 @@ export function describeConfig(config: Config): Record<string, unknown> {
     statsPage: config.statsPage,
     addGas: config.addGas,
     zecShielded: config.zecShielded,
-    // Solana's endpoint is left out even by its host: with some providers the host itself names the account.
-    rpcHosts: Object.fromEntries(Object.entries(config.rpcUrls).filter(([chain]) => chain !== "sol").map(([chain, url]) => [chain, new URL(url).host])),
-    solanaRpcSet: config.rpcUrls.sol !== DEFAULT_RPC.sol,
+    rpcHosts: Object.fromEntries(Object.entries(config.rpcUrls).map(([chain, url]) => [chain, new URL(url).host])),
     tokenPage: config.tokenAddress !== null,
-    reserve: config.reserveAddress !== null,
     siteUrl: config.siteUrl !== null,
     alerts: config.alertWebhookUrl !== null,
   };

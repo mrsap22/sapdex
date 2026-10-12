@@ -44,7 +44,7 @@ import path from "node:path";
 import { isValidTxHash } from "../shared/addresses.ts";
 import type { StatsCoin, StatsFeedRow, StatsResponse, StatsShare } from "../shared/api.ts";
 import { chainName } from "../shared/chains.ts";
-import { MICRO, usdToMicro } from "../shared/rewards.ts";
+import { MICRO, usdToMicro } from "../shared/amounts.ts";
 import { FINISHED_RETENTION_MS, writeDurable, type OrderRecord } from "./store.ts";
 
 const MINUTE_MS = 60_000;

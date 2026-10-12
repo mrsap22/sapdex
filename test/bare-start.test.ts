@@ -1,6 +1,6 @@
 // The live site, told nothing but the provider's key and the two things its host must say (where
 // to keep its files, and that one proxy stands in front of it). It starts, lists coins and answers,
-// and every block that needs a setting is absent: no coin, no pool, no links, no address of its
+// and every block that needs a setting is absent: no coin, no links, no address of its
 // own. Then each setting is given by itself, and its block, and only its block, appears.
 
 import fs from "node:fs";
@@ -17,10 +17,10 @@ import { HomeSections } from "../web/src/components/Home.tsx";
 import { useApp } from "../web/src/stores/app.ts";
 import { FIXTURE_TOKENS } from "./helpers.ts";
 
-// Made up for this test: a key of the right shape, a coin's mint and a pool's wallet on Solana.
+// Made up for this test: a key of the right shape, a coin's mint and a wallet on Solana.
 const KEY = ["practicekey", "practicekey", "practicekey"].join(".");
 const MINT = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB";
-const POOL = "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU";
+const WALLET = "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU";
 
 let dir = "";
 let running: Booted[] = [];
@@ -114,26 +114,19 @@ describe("the live site with nothing set but the provider's key", () => {
     const config = (await s.get("/api/config")).json;
     expect(config.paused).toBe(false);
     expect(config.tokenAddress).toBeNull();
-    expect(config.reserveAddress).toBeNull();
   });
 
-  it("has no coin, no pool, no links and no address of its own, anywhere", async () => {
+  it("has no coin, no links and no address of its own, anywhere", async () => {
     const s = await site();
     const config = (await s.get("/api/config")).json;
     expect(config.tokenAddress).toBeNull();
-    expect(config.reserveAddress).toBeNull();
     expect(config.xUrl).toBeNull();
     expect(config.githubUrl).toBeNull();
-    expect(s.started.solanaRpcSet).toBe(false);
-    // The coin: no page, and no facts route.
+    // The coin: no page.
     expect((await s.get("/token")).status).toBe(404);
-    expect((await s.get("/api/token")).status).toBe(404);
-    // The pool: the Rewards page still answers, with no pool in it.
-    const rewards = (await s.get("/api/rewards")).json;
-    expect(rewards.pool).toBeNull();
     // The page itself names no wallet and no address of its own.
     const page = (await s.get("/")).text;
-    expect(page).not.toContain("data-rewards-wallet");
+    expect(page).not.toMatch(/<html[^>]*wallet/);
     expect(page).not.toContain('rel="canonical"');
     expect(page).not.toContain("og:url");
     // Drawn with those settings: no link icons at all, and no coin section on the home page.
@@ -145,31 +138,30 @@ describe("the live site with nothing set but the provider's key", () => {
 });
 
 describe("each block appears when its setting is given, and only then", () => {
-  it("TOKEN_ADDRESS: the coin's page and its facts route", async () => {
+  it("TOKEN_ADDRESS: the coin's page, and the coin's section of the home page", async () => {
     const s = await site({ TOKEN_ADDRESS: MINT });
     const config = (await s.get("/api/config")).json;
     expect(config.tokenAddress).toBe(MINT);
-    expect(config.reserveAddress).toBeNull();
     expect((await s.get("/token")).status).toBe(200);
-    expect((await s.get("/api/token")).status).not.toBe(404);
     expect(drawnWith(config, "home")).toContain(`https://sapling.cash/coin/${MINT}`);
-    expect((await s.get("/")).text).not.toContain("data-rewards-wallet");
   });
 
-  it("RESERVE_ADDRESS: the pool's wallet on the page", async () => {
-    const s = await site({ RESERVE_ADDRESS: POOL });
+  it("a setting the server does not read, left in the host's variables, is ignored: the site starts, and nothing of it is anywhere", async () => {
+    const bare = await site();
+    const s = await site({ RESERVE_ADDRESS: WALLET, REWARD_TOKEN_ADDRESS: MINT, SOLANA_RPC_URL: "https://node.example.org/key-of-the-node" });
+    expect((await s.get("/api/status")).json.status).toBe("paused");
+    // The same settings are told to the page, and the same things said at start, as with none of them set.
     const config = (await s.get("/api/config")).json;
-    expect(config.reserveAddress).toBe(POOL);
+    expect(Object.keys(config).sort()).toEqual(Object.keys((await bare.get("/api/config")).json).sort());
     expect(config.tokenAddress).toBeNull();
-    expect((await s.get("/")).text).toContain(`data-rewards-wallet="${POOL}"`);
+    expect(Object.keys(s.started).sort()).toEqual(Object.keys(bare.started).sort());
+    const said = `${lines.join("\n")}\n${(await s.get("/api/config")).text}\n${(await s.get("/")).text}`;
+    for (const value of [WALLET, MINT, "node.example.org"]) expect(said).not.toContain(value);
     expect((await s.get("/token")).status).toBe(404);
-  });
-
-  it("SOLANA_RPC_URL: said as set at start, and never written out", async () => {
-    const s = await site({ SOLANA_RPC_URL: "https://node.example.org/key-of-the-node" });
-    expect(s.started.solanaRpcSet).toBe(true);
-    expect(lines.join("\n")).not.toContain("node.example.org");
-    expect((await s.get("/api/config")).text).not.toContain("node.example.org");
+    // And one that is no address and no link at all does not stop the start either.
+    const odd = await site({ RESERVE_ADDRESS: "0x1234", REWARD_TOKEN_ADDRESS: "near", SOLANA_RPC_URL: "ftp://rpc.example" });
+    expect((await odd.get("/api/status")).json.status).toBe("paused");
+    expect(lines.filter((line) => line.includes('"level":"error"') && !line.includes("sanctions_refresh_failed"))).toEqual([]);
   });
 
   it("SITE_URL: the page says which address is its own", async () => {

@@ -1,7 +1,7 @@
 // The contract between the browser and our server.
 // Amounts are always raw integer strings in the coin's smallest unit.
 
-export const TERMS_VERSION = "2026-10-11";
+export const TERMS_VERSION = "2026-10-12";
 
 /** How an order is paid: by sending to its deposit address, from any wallet. It is the one way there is. */
 export type PayMethod = "manual";
@@ -81,8 +81,6 @@ export interface ConfigResponse {
   practice: boolean;
   /** How this server routes swaps: "basic" asks the provider for its confidential routing, "public" for the ordinary kind. What the site says about itself follows this. */
   privacyMode: Confidentiality;
-  /** The pool's wallet on Solana, which weekly payouts are sent from, or null while none is set. */
-  reserveAddress: string | null;
   /** Orders made up for practice mode, so that the list of recent orders can be seen full. Always empty on the live site. */
   sampleOrders: string[];
   /** The site's own coin: its mint on Solana, or null while none is set. */
@@ -104,17 +102,6 @@ export interface ConfigResponse {
   session: string;
   sessionExpiresAt: string;
   serverNow: string;
-}
-
-/**
- * What the token's page says that only Sapling knows, as this server last read it from Sapling.
- * Each part is null where it could not be read: the page then leaves that part out.
- */
-export interface TokenFacts {
-  /** The fee Sapling takes on every trade of a coin, and its four parts, in hundredths of a percent of the trade. */
-  fee: { totalBps: number; liquidityBps: number; burnBps: number; saplingBps: number; planterBps: number } | null;
-  /** True when Sapling says this coin's planter's share goes to the pool's wallet; false when it names anything else. */
-  feedsPool: boolean | null;
 }
 
 export interface StatusResponse {
@@ -297,8 +284,6 @@ export interface CreateOrderBody {
   slippageBps?: number;
   recipient: string;
   refundTo: string;
-  /** Where this swap's points go: a Solana address. Left out, or empty, the swap adds no points. */
-  rewardsAddress?: string;
   /** True when the person chose to route this one swap in public, as in the quote that was reviewed. Only `true` is read. */
   withoutPrivate?: boolean;
   /**
@@ -377,8 +362,6 @@ export interface OrderView {
   refundFee: string | null;
   recipient: string;
   refundTo: string;
-  /** Where this swap's points go, or null when it adds none. */
-  rewardsAddress: string | null;
   /**
    * How this order is routed: "confidential" or "public", as it was made. The server sends it with
    * every order; one stored before routing was kept reads as public. (Marked optional only so that
@@ -404,7 +387,6 @@ export type ErrorCode =
   | "invalid_amount"
   | "invalid_asset"
   | "invalid_recipient"
-  | "invalid_rewards"
   | "invalid_refund"
   | "unsupported_address"
   | "session"

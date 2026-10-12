@@ -1,6 +1,6 @@
-// JSON-RPC access to four chains and to Solana, through our own configured endpoints.
-// Used for token checks, deposit confirmation, the pool's wallet and the payout tools, and the one
-// question a page may ask of a chain (see parseProxyBody).
+// JSON-RPC access to four chains, through our own configured endpoints.
+// Used for token checks, deposit confirmation, and the one question a page may ask of a chain
+// (see parseProxyBody).
 // RPC URLs can contain keys, so they are never logged or returned.
 
 import { WALLET_CHAINS, type WalletChain } from "../shared/chains.ts";
@@ -16,8 +16,6 @@ export type RpcResult = { ok: true; result: unknown } | { ok: false; code: numbe
 export interface Rpc {
   batch(chain: WalletChain, calls: RpcCall[]): Promise<RpcResult[]>;
   call(chain: WalletChain, method: string, params: unknown[]): Promise<RpcResult>;
-  /** Reads from Solana, through the server's own endpoint: the pool's wallet, and the payout tools' checks. Never asked by a browser. */
-  solana(calls: RpcCall[]): Promise<RpcResult[]>;
 }
 
 const MAX_RESPONSE_BYTES = 2_000_000;
@@ -43,7 +41,7 @@ function toResult(entry: unknown): RpcResult {
   return { ok: true, result: entry.result };
 }
 
-export function createRpc(options: { urls: Readonly<Record<WalletChain | "sol", string>>; fetchImpl?: typeof fetch }): Rpc {
+export function createRpc(options: { urls: Readonly<Record<WalletChain, string>>; fetchImpl?: typeof fetch }): Rpc {
   const fetchImpl = options.fetchImpl ?? fetch;
 
   async function batch(chain: WalletChain, calls: RpcCall[]): Promise<RpcResult[]> {
@@ -77,7 +75,6 @@ export function createRpc(options: { urls: Readonly<Record<WalletChain | "sol", 
 
   return {
     batch,
-    solana: (calls) => post(options.urls.sol, calls),
     async call(chain, method, params) {
       const [result] = await batch(chain, [{ method, params }]);
       return result ?? { ok: false, code: -32603, message: "RPC unavailable" };

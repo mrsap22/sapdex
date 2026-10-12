@@ -185,3 +185,13 @@ export function usdScaled(raw: bigint, decimals: number, priceScaled18: bigint):
 }
 
 export const USD_SCALE = 10n ** 18n;
+
+/** A millionth of a US dollar: the site's totals are added up in these. */
+export const MICRO = 1_000_000n;
+
+/** A decimal string of US dollars ("1234.5678") as millionths of a dollar, rounded down. Null for anything that is not a plain decimal. */
+export function usdToMicro(value: unknown): bigint | null {
+  if (typeof value !== "string" || value.length > 40 || !/^\d+(\.\d+)?$/.test(value)) return null;
+  const [whole = "0", frac = ""] = value.split(".");
+  return BigInt(whole) * MICRO + BigInt(frac.slice(0, 6).padEnd(6, "0"));
+}
