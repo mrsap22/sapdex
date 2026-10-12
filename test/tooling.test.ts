@@ -10,7 +10,7 @@ const read = (...parts: string[]) => fs.readFileSync(path.resolve(...parts), "ut
 const manifest = JSON.parse(read("package.json")) as { packageManager?: string; engines?: { node?: string }; scripts?: Record<string, string>; dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
 const pinned = /^npm@(\d+\.\d+\.\d+)$/.exec(manifest.packageManager ?? "")?.[1] ?? "";
 
-describe("one npm for the developer's machine, the automatic check and the host", () => {
+describe("one npm for the developer's machine and the automatic check, and one lockfile for the host too", () => {
   it("package.json names it exactly, beside the Node it runs on", () => {
     expect(manifest.packageManager).toMatch(/^npm@\d+\.\d+\.\d+$/);
     expect(manifest.engines?.node).toBe(">=24 <25");
@@ -30,8 +30,13 @@ describe("one npm for the developer's machine, the automatic check and the host"
     expect(workflow).toMatch(/permissions:\n\s+contents: read/);
   });
 
-  it("the README's deploy steps make the host install with the same npm", () => {
-    expect(read("README.md")).toContain(`Custom Build Command: \`npm install --global npm@${pinned} && npm ci --ignore-scripts && npm run build\``);
+  it("the README's deploy steps give the host the build command alone, and say plainly that the pinned npm is not held there", () => {
+    const readme = read("README.md");
+    // The host installs from the lockfile by itself before the build command runs: a second install in the build step fails there.
+    expect(readme).toContain("Custom Build Command: `npm run build` and nothing more.");
+    expect(readme).not.toMatch(/Custom Build Command: `[^`]*npm (?:ci|install)/);
+    expect(readme).toContain("on the host it is not held: the host installs with its own npm, from the same lockfile, which fixes every package's version either way.");
+    expect(pinned).toMatch(/^\d+\.\d+\.\d+$/);
   });
 
   it("a script tries a clean install under the pinned npm, an older one and the newest, before a push", () => {

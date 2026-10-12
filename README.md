@@ -386,8 +386,8 @@ shown, and `/docs/add-gas` is "Page not found."
 
 One click at a time. This creates a **preview** with swaps paused.
 
-1. Railway → **New Project** → **Deploy from GitHub repo** → choose `saplingdex`.
-2. Open the new service → **Settings** → **Build** → Custom Build Command: `npm install --global npm@11.6.2 && npm ci --ignore-scripts && npm run build` (the first part makes the host use the npm this project is pinned to, the same one as the developer's machine and the automatic check)
+1. Railway → **New Project** → **Deploy from GitHub repo** → choose this repository.
+2. Open the new service → **Settings** → **Build** → Custom Build Command: `npm run build` and nothing more. The host installs the packages from the lockfile by itself before the build command runs; a build command that installs them again fails there, because the folder is in use. The npm version this project is pinned to (`packageManager` in `package.json`) is the one the developer's machine and the automatic check use; on the host it is not held: the host installs with its own npm, from the same lockfile, which fixes every package's version either way.
 3. Same page → **Deploy** → Custom Start Command: `npm start`
 4. Same page → Healthcheck Path: `/api/status`
 5. Service → **Volumes** → **New Volume** → Mount path: `/data`. Size: 1 GB or more (logs take at most 700 MB and each order a few kilobytes; with `REGION_BLOCK=on` the region database takes about 130 MB more).
